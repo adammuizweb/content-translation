@@ -99,6 +99,89 @@ add_action('wp_head', function () {
     echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . ct_post_url($slug), ENT_QUOTES) . '">' . "\n";
 });
 
+// ─── Language switcher — shared renderer ───
+if (!function_exists('ct_switcher_html')) {
+    function ct_switcher_html(PDO $pdo, string $title = '', string $style = 'pills'): string {
+        $locales = ct_enabled_locales($pdo);
+        if (empty($locales)) return '';
+
+        $current = $GLOBALS['ct_current_post'] ?? null;
+        $currentLocale = $GLOBALS['ct_request_locale'] ?? default_locale();
+
+        $items = [];
+
+        // Default locale entry
+        if (is_array($current)) {
+            $slug = (string)($current['slug'] ?? '');
+            if ($slug === '') return '';
+            $url = ct_post_url($slug);
+        } else {
+            $url = '/';
+        }
+        $items[] = [
+            'locale' => default_locale(),
+            'url'    => $url,
+            'active' => $currentLocale === default_locale(),
+        ];
+
+        $translations = is_array($current) ? ct_translations_for_post($pdo, (int)$current['id']) : [];
+        foreach ($locales as $locale) {
+            if (is_array($current)) {
+                $t = $translations[$locale] ?? null;
+                $tSlug = ($t && (string)($t['slug'] ?? '') !== '') ? (string)$t['slug'] : (string)$current['slug'];
+                $url = ct_post_url($tSlug, $locale);
+            } else {
+                $url = '/' . $locale . '/';
+            }
+            $items[] = [
+                'locale' => $locale,
+                'url'    => $url,
+                'active' => $currentLocale === $locale,
+            ];
+        }
+
+        if ($style === 'select') {
+            $out = '<select class="ct-lang-select" onchange="if(this.value)window.location.href=this.value">';
+            foreach ($items as $item) {
+                $sel = $item['active'] ? ' selected' : '';
+                $out .= '<option value="' . htmlspecialchars($item['url'], ENT_QUOTES) . '"' . $sel . '>'
+                    . htmlspecialchars(strtoupper($item['locale']), ENT_QUOTES) . '</option>';
+            }
+            return $out . '</select>';
+        }
+
+        $out = '';
+        if ($title !== '') {
+            $out .= '<h3 class="widget-title">' . htmlspecialchars($title, ENT_QUOTES) . '</h3>';
+        }
+        $out .= '<ul class="ct-lang-list">';
+        foreach ($items as $item) {
+            $cls = $item['active'] ? ' class="active"' : '';
+            $out .= '<li' . $cls . '><a href="' . htmlspecialchars($item['url'], ENT_QUOTES) . '" hreflang="' . htmlspecialchars($item['locale'], ENT_QUOTES) . '">'
+                . htmlspecialchars(strtoupper($item['locale']), ENT_QUOTES) . '</a></li>';
+        }
+        return $out . '</ul>';
+    }
+}
+
+// Theme helper — call directly in theme files: echo ct_language_switcher()
+if (!function_exists('ct_language_switcher')) {
+    function ct_language_switcher(string $title = '', string $style = 'pills'): string {
+        $pdo = $GLOBALS['pdo'] ?? null;
+        if (!$pdo instanceof PDO) return '';
+        return '<div class="widget widget-lang-switcher">' . ct_switcher_html($pdo, $title, $style) . '</div>';
+    }
+}
+
+// ─── Shortcode: [[widget:lang_switcher title="..." style="pills|select"]] ───
+if (function_exists('register_widget_shortcode_handler')) {
+    register_widget_shortcode_handler('lang_switcher', function (PDO $pdo, array $vars, array $ctx = []) {
+        $title = (string)($vars['title'] ?? '');
+        $style = (string)($vars['style'] ?? 'pills');
+        return '<div class="widget widget-lang-switcher">' . ct_switcher_html($pdo, $title, $style) . '</div>';
+    }, ['title' => '', 'style' => 'pills']);
+}
+
 // ─── Language switcher — sidebar widget ───
 add_filter('sidebar_widget_types', function ($types) {
     if (!is_array($types)) $types = [];
@@ -115,55 +198,5 @@ add_filter('render_sidebar_widget', function ($html, $type, $config, $pdo) {
     if (!$pdo instanceof PDO) return '';
 
     $title = (string)($config['title'] ?? __('Languages'));
-    $locales = ct_enabled_locales($pdo);
-    if (empty($locales)) return '';
-
-    $current = $GLOBALS['ct_current_post'] ?? null;
-    $currentLocale = $GLOBALS['ct_request_locale'] ?? default_locale();
-
-    $items = [];
-
-    // Default locale entry
-    if (is_array($current)) {
-        $slug = (string)($current['slug'] ?? '');
-        if ($slug === '') return '';
-        $url = ct_post_url($slug);
-    } else {
-        $url = '/';
-    }
-    $items[] = [
-        'locale' => default_locale(),
-        'url'    => $url,
-        'active' => $currentLocale === default_locale(),
-    ];
-
-    $translations = is_array($current) ? ct_translations_for_post($pdo, (int)$current['id']) : [];
-    foreach ($locales as $locale) {
-        if (is_array($current)) {
-            $t = $translations[$locale] ?? null;
-            $tSlug = ($t && (string)($t['slug'] ?? '') !== '') ? (string)$t['slug'] : (string)$current['slug'];
-            $url = ct_post_url($tSlug, $locale);
-        } else {
-            $url = '/' . $locale . '/';
-        }
-        $items[] = [
-            'locale' => $locale,
-            'url'    => $url,
-            'active' => $currentLocale === $locale,
-        ];
-    }
-
-    $out = '<div class="widget widget-lang-switcher">';
-    if ($title !== '') {
-        $out .= '<h3 class="widget-title">' . htmlspecialchars($title, ENT_QUOTES) . '</h3>';
-    }
-    $out .= '<ul class="ct-lang-list">';
-    foreach ($items as $item) {
-        $cls = $item['active'] ? ' class="active"' : '';
-        $out .= '<li' . $cls . '><a href="' . htmlspecialchars($item['url'], ENT_QUOTES) . '" hreflang="' . htmlspecialchars($item['locale'], ENT_QUOTES) . '">'
-            . htmlspecialchars(strtoupper($item['locale']), ENT_QUOTES) . '</a></li>';
-    }
-    $out .= '</ul></div>';
-
-    return $out;
+    return '<div class="widget widget-lang-switcher">' . ct_switcher_html($pdo, $title) . '</div>';
 }, 10, 4);

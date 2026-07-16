@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Content Translation",
   "description": "Manual content translation for posts and pages — per-locale title, slug, and content with locale-prefixed URLs (/id/, /de/), language switcher widget, and hreflang tags.",
   "author": "Adam Muiz",
