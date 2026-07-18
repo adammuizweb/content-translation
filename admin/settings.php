@@ -15,7 +15,7 @@ $selfUrl = $base . '/?page=admin/tools/content-translation/settings';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
 
 $supported = function_exists('get_supported_locales') ? get_supported_locales() : ['en'];
-$defaultLocale = function_exists('default_locale') ? default_locale() : 'en';
+$defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $enabled = ct_enabled_locales($pdo);
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_settings'])) {

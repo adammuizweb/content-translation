@@ -18,7 +18,7 @@ $editUrl = $base . '/?page=admin/tools/content-translation/edit';
 $settingsUrl = $base . '/?page=admin/tools/content-translation/settings';
 
 $locales = ct_enabled_locales($pdo);
-$defaultLocale = function_exists('default_locale') ? default_locale() : 'en';
+$defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 
 $q = trim((string)($_GET['q'] ?? ''));
 $typeFilter = trim((string)($_GET['type'] ?? ''));

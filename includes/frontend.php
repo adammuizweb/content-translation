@@ -81,7 +81,7 @@ add_action('wp_head', function () {
 
     $base = ct_base_url();
     $links = [];
-    $links[] = ['hreflang' => default_locale(), 'href' => $base . ct_post_url($slug)];
+    $links[] = ['hreflang' => content_default_locale(), 'href' => $base . ct_post_url($slug)];
 
     $translations = ct_translations_for_post($pdo, $id);
     foreach (ct_enabled_locales($pdo) as $locale) {
@@ -106,7 +106,7 @@ if (!function_exists('ct_switcher_html')) {
         if (empty($locales)) return '';
 
         $current = $GLOBALS['ct_current_post'] ?? null;
-        $currentLocale = $GLOBALS['ct_request_locale'] ?? default_locale();
+        $currentLocale = $GLOBALS['ct_request_locale'] ?? content_default_locale();
 
         $items = [];
 
@@ -119,9 +119,9 @@ if (!function_exists('ct_switcher_html')) {
             $url = '/';
         }
         $items[] = [
-            'locale' => default_locale(),
+            'locale' => content_default_locale(),
             'url'    => $url,
-            'active' => $currentLocale === default_locale(),
+            'active' => $currentLocale === content_default_locale(),
         ];
 
         $translations = is_array($current) ? ct_translations_for_post($pdo, (int)$current['id']) : [];

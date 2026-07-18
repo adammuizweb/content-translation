@@ -40,7 +40,7 @@ if (!$post) {
 }
 
 $translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => ''];
-$defaultLocale = function_exists('default_locale') ? default_locale() : 'en';
+$defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
 ?>
 

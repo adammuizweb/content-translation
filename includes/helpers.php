@@ -38,7 +38,7 @@ if (!function_exists('ct_ensure_schema')) {
         }
         if (empty($locales)) {
             $supported = function_exists('get_supported_locales') ? get_supported_locales() : ['en'];
-            $default = function_exists('default_locale') ? default_locale() : 'en';
+            $default = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
             $locales = array_values(array_diff($supported, [$default]));
         }
         return $locales;
@@ -46,7 +46,7 @@ if (!function_exists('ct_ensure_schema')) {
 
     function ct_set_enabled_locales(PDO $pdo, array $locales): bool {
         $supported = function_exists('get_supported_locales') ? get_supported_locales() : [];
-        $default = function_exists('default_locale') ? default_locale() : 'en';
+        $default = function_exists('default_locale') ? content_default_locale() : 'en';
         $clean = [];
         foreach ($locales as $l) {
             $l = trim((string)$l);
@@ -175,7 +175,7 @@ if (!function_exists('ct_ensure_schema')) {
 
     // URL for a post/page in a given locale (null = default locale, no prefix)
     function ct_post_url(string $slug, ?string $locale = null): string {
-        $prefix = ($locale !== null && $locale !== '' && $locale !== default_locale()) ? '/' . $locale : '';
+        $prefix = ($locale !== null && $locale !== '' && $locale !== content_default_locale()) ? '/' . $locale : '';
         return $prefix . '/' . ltrim($slug, '/');
     }
 }
