@@ -16,6 +16,7 @@ $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
 $saveUrl = $base . '/?page=admin/tools/content-translation/api/save&action=api';
 $deleteUrl = $base . '/?page=admin/tools/content-translation/api/delete&action=api';
+$generateUrl = $base . '/?page=admin/tools/content-translation/api/generate&action=api';
 
 $postId = (int)($_GET['post_id'] ?? 0);
 $locale = trim((string)($_GET['locale'] ?? ''));
@@ -40,6 +41,8 @@ if (!$post) {
 }
 
 $translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => ''];
+$isDraft = ($translation['status'] ?? '') === 'draft';
+$canGenerate = ct_machine_provider($pdo) === 'libretranslate';
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
 ?>
@@ -77,7 +80,9 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
     </div>
 
     <div class="ct-panel">
-      <h3><?= __('Translation') ?> (<?= h(strtoupper($locale)) ?>)</h3>
+      <h3><?= __('Translation') ?> (<?= h(strtoupper($locale)) ?>)
+        <small id="ct-status" class="muted"><?= $isDraft ? __('Draft - review before publishing') : '' ?></small>
+      </h3>
       <form id="ct-form">
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="post_id" value="<?= $postId ?>">
@@ -97,7 +102,10 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
         </div>
 
         <div class="ct-actions">
-          <button type="submit" class="btn btn-primary"><?= __('Save Translation') ?></button>
+          <?php if ($canGenerate): ?>
+            <button type="button" id="ct-generate" class="btn"><?= __('Generate LibreTranslate Draft') ?></button>
+          <?php endif; ?>
+          <button type="submit" class="btn btn-primary"><?= $isDraft ? __('Save & Publish') : __('Save Translation') ?></button>
           <button type="button" id="ct-delete" class="btn btn-danger"><?= __('Delete Translation') ?></button>
         </div>
       </form>
@@ -142,6 +150,33 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
 
   function getContent() {
     return quill ? quill.root.innerHTML : '';
+  }
+
+  const generateButton = document.getElementById('ct-generate');
+  if (generateButton) {
+    generateButton.addEventListener('click', async function() {
+      generateButton.disabled = true;
+      const fd = new FormData();
+      fd.set('csrf_token', form.querySelector('[name=csrf_token]').value);
+      fd.set('post_id', '<?= $postId ?>');
+      fd.set('locale', '<?= h($locale) ?>');
+      try {
+        const res = await fetch('<?= $generateUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
+        const data = await res.json();
+        if (!data.success) {
+          notify('error', data.error || '<?= __('Draft generation failed.') ?>');
+          return;
+        }
+        document.getElementById('ct-title').value = data.title || '';
+        if (quill) quill.root.innerHTML = data.content || '';
+        document.getElementById('ct-status').textContent = '<?= __('Draft - review before publishing') ?>';
+        notify('success', data.message);
+      } catch (err) {
+        notify('error', '<?= __('Network error.') ?>');
+      } finally {
+        generateButton.disabled = false;
+      }
+    });
   }
 
   form.addEventListener('submit', async function(e) {

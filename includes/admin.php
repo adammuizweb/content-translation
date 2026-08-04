@@ -34,9 +34,11 @@ add_action('editor_mode_after_areas', function ($post, $chosenMode) {
     echo '<h3>' . htmlspecialchars(__('Translations'), ENT_QUOTES) . '</h3>';
     echo '<ul>';
     foreach ($locales as $locale) {
-        $has = isset($translations[$locale]);
-        $label = strtoupper($locale) . ' — ' . ($has ? __('Edit') : __('Add'));
-        $cls = $has ? 'ct-status ct-status-done' : 'ct-status ct-status-empty';
+        $translation = $translations[$locale] ?? null;
+        $has = $translation !== null;
+        $isDraft = $has && ($translation['status'] ?? 'published') === 'draft';
+        $label = strtoupper($locale) . ' — ' . ($isDraft ? __('Draft') : ($has ? __('Edit') : __('Add')));
+        $cls = $has && !$isDraft ? 'ct-status ct-status-done' : 'ct-status ct-status-empty';
         echo '<li><a class="' . $cls . '" href="' . htmlspecialchars($editUrl . '&post_id=' . $id . '&locale=' . urlencode($locale), ENT_QUOTES) . '">'
             . htmlspecialchars($label, ENT_QUOTES) . '</a></li>';
     }

@@ -17,6 +17,8 @@ $overviewUrl = $base . '/?page=admin/tools/content-translation';
 $supported = function_exists('get_supported_locales') ? get_supported_locales() : ['en'];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $enabled = ct_enabled_locales($pdo);
+$machineProvider = ct_machine_provider($pdo);
+$libretranslateUrl = function_exists('settings_get') ? (string)settings_get($pdo, 'content_translation_libretranslate_url', '') : '';
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_settings'])) {
     if (!function_exists('csrf_check') || !csrf_check((string)($_POST['csrf_token'] ?? ''))) {
@@ -27,6 +29,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_sett
     }
     $selected = $_POST['locales'] ?? [];
     ct_set_enabled_locales($pdo, is_array($selected) ? $selected : []);
+    $provider = (string)($_POST['machine_provider'] ?? 'none');
+    $provider = in_array($provider, ['none', 'libretranslate'], true) ? $provider : 'none';
+    settings_set($pdo, 'content_translation_machine_provider', $provider);
+    settings_set($pdo, 'content_translation_libretranslate_url', trim((string)($_POST['libretranslate_url'] ?? '')));
+    $apiKey = trim((string)($_POST['libretranslate_api_key'] ?? ''));
+    if ($apiKey !== '') settings_set($pdo, 'content_translation_libretranslate_api_key', $apiKey);
     if (function_exists('adiwira_redirect_with_flash')) {
         adiwira_redirect_with_flash($selfUrl, 'success', __('Settings saved.'));
     }
@@ -57,6 +65,25 @@ $flashType = $_GET['flash_type'] ?? 'success';
     <div class="ct-field">
       <label><?= __('Default locale') ?></label>
       <div class="ct-readonly"><strong><?= h(strtoupper($defaultLocale)) ?></strong> <span class="muted">(<?= __('no URL prefix') ?>)</span></div>
+    </div>
+
+    <div class="ct-field">
+      <label for="ct-machine-provider"><?= __('Machine translation provider') ?></label>
+      <select id="ct-machine-provider" name="machine_provider">
+        <option value="none" <?= $machineProvider === 'none' ? 'selected' : '' ?>><?= __('Manual translations only') ?></option>
+        <option value="libretranslate" <?= $machineProvider === 'libretranslate' ? 'selected' : '' ?>>LibreTranslate</option>
+      </select>
+      <p class="muted"><?= __('Machine translations are saved as drafts and require review before publication.') ?></p>
+    </div>
+
+    <div class="ct-field">
+      <label for="ct-libretranslate-url">LibreTranslate URL</label>
+      <input id="ct-libretranslate-url" type="url" name="libretranslate_url" value="<?= h($libretranslateUrl) ?>" placeholder="https://translate.example.com">
+    </div>
+
+    <div class="ct-field">
+      <label for="ct-libretranslate-key">LibreTranslate API key</label>
+      <input id="ct-libretranslate-key" type="password" name="libretranslate_api_key" value="" autocomplete="new-password" placeholder="<?= $libretranslateUrl !== '' ? __('Leave blank to keep current key') : '' ?>">
     </div>
 
     <div class="ct-field">

@@ -57,7 +57,7 @@ $flashType = $_GET['flash_type'] ?? 'success';
   <div class="ct-header">
     <div>
       <h2><?= __('Content Translation') ?></h2>
-      <p class="muted"><?= __('Manage manual translations for posts and pages. Default locale:') ?> <strong><?= h(strtoupper($defaultLocale)) ?></strong></p>
+      <p class="muted"><?= __('Manage reviewed translations for posts and pages. Default locale:') ?> <strong><?= h(strtoupper($defaultLocale)) ?></strong></p>
     </div>
     <a class="btn" href="<?= h($settingsUrl) ?>"><?= __('Settings') ?></a>
   </div>
@@ -110,11 +110,13 @@ $flashType = $_GET['flash_type'] ?? 'success';
           <td><?= $post['type'] === 'page' ? __('Page') : __('Post') ?></td>
           <td><code><?= h((string)$post['slug']) ?></code></td>
           <?php foreach ($locales as $locale): ?>
-            <?php $has = !empty($statuses[(int)$post['id']][$locale]); ?>
+            <?php $status = $statuses[(int)$post['id']][$locale] ?? null; ?>
+            <?php $has = $status !== null; ?>
+            <?php $isDraft = $status === 'draft'; ?>
             <td class="ct-locale-col">
-              <a class="ct-status <?= $has ? 'ct-status-done' : 'ct-status-empty' ?>"
+              <a class="ct-status <?= $has && !$isDraft ? 'ct-status-done' : 'ct-status-empty' ?>"
                  href="<?= h($editUrl . '&post_id=' . (int)$post['id'] . '&locale=' . urlencode($locale)) ?>">
-                <?= $has ? __('Edit') : __('Add') ?>
+                 <?= $isDraft ? __('Draft') : ($has ? __('Edit') : __('Add')) ?>
               </a>
             </td>
           <?php endforeach; ?>

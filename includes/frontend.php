@@ -55,7 +55,7 @@ add_filter('post_data', function ($post, $pdo) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     if (!$locale) return $post;
 
-    $t = ct_get_translation($pdo, $id, $locale);
+    $t = ct_get_published_translation($pdo, $id, $locale);
     if (!$t) return $post;
 
     foreach (['title', 'content'] as $f) {
@@ -83,7 +83,7 @@ add_action('wp_head', function () {
     $links = [];
     $links[] = ['hreflang' => content_default_locale(), 'href' => $base . ct_post_url($slug)];
 
-    $translations = ct_translations_for_post($pdo, $id);
+    $translations = array_filter(ct_translations_for_post($pdo, $id), fn(array $translation) => ($translation['status'] ?? 'published') === 'published');
     foreach (ct_enabled_locales($pdo) as $locale) {
         $t = $translations[$locale] ?? null;
         if (!$t) continue;
@@ -124,7 +124,9 @@ if (!function_exists('ct_switcher_html')) {
             'active' => $currentLocale === content_default_locale(),
         ];
 
-        $translations = is_array($current) ? ct_translations_for_post($pdo, (int)$current['id']) : [];
+        $translations = is_array($current)
+            ? array_filter(ct_translations_for_post($pdo, (int)$current['id']), fn(array $translation) => ($translation['status'] ?? 'published') === 'published')
+            : [];
         foreach ($locales as $locale) {
             if (is_array($current)) {
                 $t = $translations[$locale] ?? null;
