@@ -18,16 +18,12 @@ if (!function_exists('ct_ensure_schema')) {
                 slug VARCHAR(255) NOT NULL DEFAULT '',
                 content MEDIUMTEXT NULL,
                 status ENUM('draft','published') NOT NULL DEFAULT 'published',
-                provider VARCHAR(32) NOT NULL DEFAULT 'manual',
-                source_hash CHAR(64) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_post_locale (post_id, locale),
                 KEY idx_locale_slug (locale, slug)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             ct_add_column_if_missing($pdo, 'post_translations', 'status', "ENUM('draft','published') NOT NULL DEFAULT 'published'");
-            ct_add_column_if_missing($pdo, 'post_translations', 'provider', "VARCHAR(32) NOT NULL DEFAULT 'manual'");
-            ct_add_column_if_missing($pdo, 'post_translations', 'source_hash', 'CHAR(64) NULL');
         } catch (Throwable $e) {
             error_log('[content-translation] schema error: ' . $e->getMessage());
         }
@@ -93,18 +89,17 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_save_translation(PDO $pdo, int $postId, string $locale, array $data): bool {
         ct_ensure_schema($pdo);
         try {
-            $stmt = $pdo->prepare("INSERT INTO post_translations (post_id, locale, title, slug, content, status, provider, source_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE title = VALUES(title), slug = VALUES(slug), content = VALUES(content), status = VALUES(status), provider = VALUES(provider), source_hash = VALUES(source_hash)");
+            $status = (string)($data['status'] ?? 'published');
+            $stmt = $pdo->prepare("INSERT INTO post_translations (post_id, locale, title, slug, content, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE title = VALUES(title), slug = VALUES(slug), content = VALUES(content), status = VALUES(status)");
             return $stmt->execute([
                 $postId,
                 $locale,
                 (string)($data['title'] ?? ''),
                 (string)($data['slug'] ?? ''),
                 (string)($data['content'] ?? ''),
-                in_array(($data['status'] ?? 'published'), ['draft', 'published'], true) ? $data['status'] : 'published',
-                (string)($data['provider'] ?? 'manual'),
-                (string)($data['source_hash'] ?? '') ?: null,
+                in_array($status, ['draft', 'published'], true) ? $status : 'published',
             ]);
         } catch (Throwable $e) {
             error_log('[content-translation] save error: ' . $e->getMessage());
@@ -115,45 +110,6 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_get_published_translation(PDO $pdo, int $postId, string $locale): ?array {
         $translation = ct_get_translation($pdo, $postId, $locale);
         return $translation && ($translation['status'] ?? 'published') === 'published' ? $translation : null;
-    }
-
-    function ct_translation_source_hash(array $post): string {
-        return hash('sha256', implode("\n", [
-            (string)($post['title'] ?? ''),
-            (string)($post['slug'] ?? ''),
-            (string)($post['content'] ?? ''),
-        ]));
-    }
-
-    function ct_machine_provider(PDO $pdo): string {
-        $provider = function_exists('settings_get') ? (string)settings_get($pdo, 'content_translation_machine_provider', 'none') : 'none';
-        return in_array($provider, ['none', 'libretranslate'], true) ? $provider : 'none';
-    }
-
-    function ct_libretranslate_request(PDO $pdo, string $text, string $sourceLocale, string $targetLocale): array {
-        $url = function_exists('settings_get') ? trim((string)settings_get($pdo, 'content_translation_libretranslate_url', '')) : '';
-        $apiKey = function_exists('settings_get') ? trim((string)settings_get($pdo, 'content_translation_libretranslate_api_key', '')) : '';
-        if ($url === '' || !filter_var($url, FILTER_VALIDATE_URL)) return ['ok' => false, 'error' => 'LibreTranslate URL is not configured'];
-        if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL extension is not available'];
-
-        $payload = ['q' => $text, 'source' => $sourceLocale, 'target' => $targetLocale, 'format' => 'html'];
-        if ($apiKey !== '') $payload['api_key'] = $apiKey;
-        $ch = curl_init(rtrim($url, '/') . '/translate');
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-        ]);
-        $response = curl_exec($ch);
-        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-        if ($response === false || $status < 200 || $status >= 300) return ['ok' => false, 'error' => $error !== '' ? $error : 'LibreTranslate request failed'];
-        $data = json_decode((string)$response, true);
-        if (!is_array($data) || !isset($data['translatedText'])) return ['ok' => false, 'error' => 'LibreTranslate returned an invalid response'];
-        return ['ok' => true, 'text' => (string)$data['translatedText']];
     }
 
     function ct_delete_translation(PDO $pdo, int $postId, string $locale): bool {
@@ -206,7 +162,7 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_find_translation_by_slug(PDO $pdo, string $locale, string $slug): ?array {
         ct_ensure_schema($pdo);
         try {
-            $stmt = $pdo->prepare("SELECT * FROM post_translations WHERE locale = ? AND slug = ? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM post_translations WHERE locale = ? AND slug = ? AND status = 'published' LIMIT 1");
             $stmt->execute([$locale, $slug]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             return $row ?: null;
@@ -227,6 +183,34 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
+    function ct_overlay_published_translation(array $post, PDO $pdo, ?string $locale = null): array {
+        $locale ??= $GLOBALS['ct_request_locale'] ?? null;
+        if (!$locale) return $post;
+
+        $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), $locale);
+        if (!$translation) return $post;
+
+        foreach (['title', 'content'] as $field) {
+            if (isset($translation[$field]) && $translation[$field] !== '' && $translation[$field] !== null) {
+                $post[$field] = $translation[$field];
+            }
+        }
+        $post['ct_locale'] = $locale;
+        $post['ct_translated_slug'] = (string)($translation['slug'] ?? '') !== '' ? (string)$translation['slug'] : (string)($post['slug'] ?? '');
+        return $post;
+    }
+
+    function ct_homepage_theme_post(PDO $pdo): ?array {
+        try {
+            $stmt = $pdo->query("SELECT p.* FROM assignments a INNER JOIN posts p ON p.id = a.custom_post_id WHERE a.slot_key = 'main.homepage' AND p.type = 'theme' AND p.is_deleted = 0 LIMIT 1");
+            $post = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $post ?: null;
+        } catch (Throwable $e) {
+            error_log('[content-translation] homepage lookup error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     function ct_base_url(): string {
         $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
         $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
@@ -234,9 +218,30 @@ if (!function_exists('ct_ensure_schema')) {
         return ($https ? 'https' : 'http') . '://' . $host;
     }
 
+    function ct_content_requires_codemirror(string $content): bool {
+        return (bool) preg_match(
+            '/<(script|style|iframe|embed|object|form|svg|canvas|php|link|meta|table|thead|tbody|tfoot|tr|th|td)[\s>]|on[a-z]+\s*=|style\s*=/i',
+            $content
+        );
+    }
+
+    function ct_render_not_found(): never {
+        http_response_code(404);
+        $path = defined('FRONTEND_404_PATH')
+            ? FRONTEND_404_PATH
+            : dirname(__DIR__, 3) . '/app/frontend_404.php';
+        require $path;
+        exit;
+    }
+
     // URL for a post/page in a given locale (null = default locale, no prefix)
     function ct_post_url(string $slug, ?string $locale = null): string {
         $prefix = ($locale !== null && $locale !== '' && $locale !== content_default_locale()) ? '/' . $locale : '';
-        return $prefix . '/' . ltrim($slug, '/');
+        return rtrim($prefix . '/' . ltrim($slug, '/'), '/') . '/';
+    }
+
+    function ct_homepage_url(?string $locale = null): string {
+        if ($locale === null || $locale === '' || $locale === content_default_locale()) return '/';
+        return '/' . rawurlencode($locale) . '/';
     }
 }

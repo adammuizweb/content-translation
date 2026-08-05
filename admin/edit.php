@@ -16,7 +16,6 @@ $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
 $saveUrl = $base . '/?page=admin/tools/content-translation/api/save&action=api';
 $deleteUrl = $base . '/?page=admin/tools/content-translation/api/delete&action=api';
-$generateUrl = $base . '/?page=admin/tools/content-translation/api/generate&action=api';
 
 $postId = (int)($_GET['post_id'] ?? 0);
 $locale = trim((string)($_GET['locale'] ?? ''));
@@ -41,9 +40,11 @@ if (!$post) {
 }
 
 $translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => ''];
-$isDraft = ($translation['status'] ?? '') === 'draft';
-$canGenerate = ct_machine_provider($pdo) === 'libretranslate';
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
+$usesCodeMirror = $post['type'] === 'theme'
+    || ct_content_requires_codemirror((string)$post['content'])
+    || ct_content_requires_codemirror((string)$translation['content']);
+$publishedTranslation = ct_get_published_translation($pdo, $postId, $locale);
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
 ?>
 
@@ -53,36 +54,20 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
       <h2><?= __('Edit Translation') ?> — <?= h(strtoupper($locale)) ?></h2>
       <p class="muted">
         <?= h((string)$post['title']) ?>
-        <span class="badge"><?= $post['type'] === 'page' ? __('Page') : __('Post') ?></span>
+        <span class="badge"><?= $post['type'] === 'page' ? __('Page') : ($post['type'] === 'theme' ? __('Theme') : __('Post')) ?></span>
       </p>
     </div>
     <div class="ct-header-actions">
       <a class="btn" href="<?= h($overviewUrl) ?>"><?= __('Back') ?></a>
-      <a class="btn" href="<?= h($previewUrl) ?>" target="_blank" rel="noopener"><?= __('Preview') ?></a>
+      <?php if ($publishedTranslation): ?>
+        <a class="btn" href="<?= h($previewUrl) ?>" target="_blank" rel="noopener"><?= __('Preview') ?></a>
+      <?php endif; ?>
     </div>
   </div>
 
-  <div class="ct-editor-grid">
-    <div class="ct-panel">
-      <h3><?= __('Original') ?> (<?= h(strtoupper($defaultLocale)) ?>)</h3>
-      <div class="ct-field">
-        <label><?= __('Title') ?></label>
-        <div class="ct-readonly"><?= h((string)$post['title']) ?></div>
-      </div>
-      <div class="ct-field">
-        <label><?= __('Slug') ?></label>
-        <div class="ct-readonly"><code><?= h((string)$post['slug']) ?></code></div>
-      </div>
-      <div class="ct-field">
-        <label><?= __('Content') ?></label>
-        <div class="ct-readonly ct-readonly-content"><?= (string)($post['content'] ?? '') ?></div>
-      </div>
-    </div>
-
-    <div class="ct-panel">
-      <h3><?= __('Translation') ?> (<?= h(strtoupper($locale)) ?>)
-        <small id="ct-status" class="muted"><?= $isDraft ? __('Draft - review before publishing') : '' ?></small>
-      </h3>
+  <div class="ct-editor-stack">
+    <section class="ct-panel ct-translation-panel">
+      <h3><?= __('Translation') ?> (<?= h(strtoupper($locale)) ?>)</h3>
       <form id="ct-form">
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="post_id" value="<?= $postId ?>">
@@ -98,18 +83,42 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
         </div>
         <div class="ct-field">
           <label><?= __('Content') ?></label>
-          <div id="ct-quill" class="adam-quill"><?= (string)($translation['content'] ?? '') ?></div>
+          <?php if ($usesCodeMirror): ?>
+            <p class="muted ct-editor-hint"><?= __('Complex HTML detected. CodeMirror preserves the source markup.') ?></p>
+            <textarea id="ct-codemirror" name="content"><?= h((string)$translation['content']) ?></textarea>
+          <?php else: ?>
+            <div id="ct-quill" class="adam-quill"><?= (string)$translation['content'] ?></div>
+          <?php endif; ?>
         </div>
 
         <div class="ct-actions">
-          <?php if ($canGenerate): ?>
-            <button type="button" id="ct-generate" class="btn"><?= __('Generate LibreTranslate Draft') ?></button>
-          <?php endif; ?>
-          <button type="submit" class="btn btn-primary"><?= $isDraft ? __('Save & Publish') : __('Save Translation') ?></button>
+          <button type="submit" class="btn btn-primary"><?= __('Save Translation') ?></button>
           <button type="button" id="ct-delete" class="btn btn-danger"><?= __('Delete Translation') ?></button>
         </div>
       </form>
-    </div>
+    </section>
+
+    <details class="ct-panel ct-source-panel">
+      <summary><?= __('Original') ?> (<?= h(strtoupper($defaultLocale)) ?>)</summary>
+      <div class="ct-source-panel__body">
+        <div class="ct-field">
+          <label><?= __('Title') ?></label>
+          <div class="ct-readonly"><?= h((string)$post['title']) ?></div>
+        </div>
+        <div class="ct-field">
+          <label><?= __('Slug') ?></label>
+          <div class="ct-readonly"><code><?= h((string)$post['slug']) ?></code></div>
+        </div>
+        <div class="ct-field">
+          <label><?= __('Content') ?></label>
+          <?php if ($usesCodeMirror): ?>
+            <pre class="ct-readonly ct-readonly-content ct-source-code"><?= h((string)$post['content']) ?></pre>
+          <?php else: ?>
+            <div class="ct-readonly ct-readonly-content"><?= (string)$post['content'] ?></div>
+          <?php endif; ?>
+        </div>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -128,8 +137,23 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
 (function(){
   const form = document.getElementById('ct-form');
   let quill = null;
+  let codeMirror = null;
 
-  if (window.Quill) {
+  if (document.getElementById('ct-codemirror') && window.CodeMirror) {
+    codeMirror = CodeMirror.fromTextArea(document.getElementById('ct-codemirror'), {
+      mode: 'htmlmixed',
+      lineNumbers: true,
+      styleActiveLine: true,
+      matchBrackets: true,
+      autoCloseBrackets: true,
+      autoCloseTags: true,
+      lineWrapping: true,
+      theme: 'dracula',
+      foldGutter: true,
+      gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter']
+    });
+    codeMirror.setSize('100%', '58vh');
+  } else if (window.Quill) {
     quill = new Quill('#ct-quill', {
       theme: 'snow',
       modules: { toolbar: [
@@ -149,34 +173,8 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
   }
 
   function getContent() {
+    if (codeMirror) return codeMirror.getValue();
     return quill ? quill.root.innerHTML : '';
-  }
-
-  const generateButton = document.getElementById('ct-generate');
-  if (generateButton) {
-    generateButton.addEventListener('click', async function() {
-      generateButton.disabled = true;
-      const fd = new FormData();
-      fd.set('csrf_token', form.querySelector('[name=csrf_token]').value);
-      fd.set('post_id', '<?= $postId ?>');
-      fd.set('locale', '<?= h($locale) ?>');
-      try {
-        const res = await fetch('<?= $generateUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
-        const data = await res.json();
-        if (!data.success) {
-          notify('error', data.error || '<?= __('Draft generation failed.') ?>');
-          return;
-        }
-        document.getElementById('ct-title').value = data.title || '';
-        if (quill) quill.root.innerHTML = data.content || '';
-        document.getElementById('ct-status').textContent = '<?= __('Draft - review before publishing') ?>';
-        notify('success', data.message);
-      } catch (err) {
-        notify('error', '<?= __('Network error.') ?>');
-      } finally {
-        generateButton.disabled = false;
-      }
-    });
   }
 
   form.addEventListener('submit', async function(e) {

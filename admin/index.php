@@ -26,9 +26,9 @@ $pageNum = max(1, (int)($_GET['p'] ?? 1));
 $perPage = 20;
 $offset = ($pageNum - 1) * $perPage;
 
-$where = "is_deleted = 0 AND type IN ('article','page')";
+$where = "is_deleted = 0 AND type IN ('article','page','theme')";
 $params = [];
-if ($typeFilter !== '' && in_array($typeFilter, ['article', 'page'], true)) {
+if ($typeFilter !== '' && in_array($typeFilter, ['article', 'page', 'theme'], true)) {
     $where .= " AND type = ?";
     $params[] = $typeFilter;
 }
@@ -57,7 +57,7 @@ $flashType = $_GET['flash_type'] ?? 'success';
   <div class="ct-header">
     <div>
       <h2><?= __('Content Translation') ?></h2>
-      <p class="muted"><?= __('Manage reviewed translations for posts and pages. Default locale:') ?> <strong><?= h(strtoupper($defaultLocale)) ?></strong></p>
+      <p class="muted"><?= __('Manage reviewed translations for site content. Default locale:') ?> <strong><?= h(strtoupper($defaultLocale)) ?></strong></p>
     </div>
     <a class="btn" href="<?= h($settingsUrl) ?>"><?= __('Settings') ?></a>
   </div>
@@ -80,6 +80,7 @@ $flashType = $_GET['flash_type'] ?? 'success';
       <option value=""><?= __('All types') ?></option>
       <option value="article" <?= $typeFilter === 'article' ? 'selected' : '' ?>><?= __('Posts') ?></option>
       <option value="page" <?= $typeFilter === 'page' ? 'selected' : '' ?>><?= __('Pages') ?></option>
+      <option value="theme" <?= $typeFilter === 'theme' ? 'selected' : '' ?>><?= __('Themes') ?></option>
     </select>
     <button type="submit" class="btn btn-primary"><?= __('Filter') ?></button>
   </form>
@@ -90,14 +91,12 @@ $flashType = $_GET['flash_type'] ?? 'success';
         <th><?= __('Title') ?></th>
         <th><?= __('Type') ?></th>
         <th><?= __('Slug') ?></th>
-        <?php foreach ($locales as $locale): ?>
-          <th class="ct-locale-col"><?= h(strtoupper($locale)) ?></th>
-        <?php endforeach; ?>
+        <th class="ct-translations-col"><?= __('Translations') ?></th>
       </tr>
     </thead>
     <tbody>
       <?php if (empty($posts)): ?>
-        <tr><td colspan="<?= 3 + count($locales) ?>" class="muted"><?= __('No content found.') ?></td></tr>
+        <tr><td colspan="4" class="muted"><?= __('No content found.') ?></td></tr>
       <?php endif; ?>
       <?php foreach ($posts as $post): ?>
         <tr>
@@ -107,19 +106,18 @@ $flashType = $_GET['flash_type'] ?? 'success';
               <span class="badge"><?= h((string)$post['status']) ?></span>
             <?php endif; ?>
           </td>
-          <td><?= $post['type'] === 'page' ? __('Page') : __('Post') ?></td>
+          <td><?= $post['type'] === 'page' ? __('Page') : ($post['type'] === 'theme' ? __('Theme') : __('Post')) ?></td>
           <td><code><?= h((string)$post['slug']) ?></code></td>
-          <?php foreach ($locales as $locale): ?>
-            <?php $status = $statuses[(int)$post['id']][$locale] ?? null; ?>
-            <?php $has = $status !== null; ?>
-            <?php $isDraft = $status === 'draft'; ?>
-            <td class="ct-locale-col">
-              <a class="ct-status <?= $has && !$isDraft ? 'ct-status-done' : 'ct-status-empty' ?>"
-                 href="<?= h($editUrl . '&post_id=' . (int)$post['id'] . '&locale=' . urlencode($locale)) ?>">
-                 <?= $isDraft ? __('Draft') : ($has ? __('Edit') : __('Add')) ?>
-              </a>
-            </td>
-          <?php endforeach; ?>
+          <td class="ct-translations-col">
+            <select class="ct-translation-select" aria-label="<?= h(__('Translations')) ?>" onchange="if(this.value) window.location.href=this.value">
+              <option value=""><?= __('Choose language…') ?></option>
+              <?php foreach ($locales as $locale): ?>
+                <?php $status = $statuses[(int)$post['id']][$locale] ?? null; ?>
+                <?php $label = strtoupper($locale) . ' — ' . ($status === 'draft' ? __('Draft') : ($status !== null ? __('Edit') : __('Add'))); ?>
+                <option value="<?= h($editUrl . '&post_id=' . (int)$post['id'] . '&locale=' . urlencode($locale)) ?>"><?= h($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </td>
         </tr>
       <?php endforeach; ?>
     </tbody>

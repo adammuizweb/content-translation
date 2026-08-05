@@ -1,8 +1,8 @@
 {
   "name": "content-translation",
-  "version": "1.2.0",
+  "version": "1.3.1",
   "title": "Content Translation",
-  "description": "Reviewed translations for posts and pages with locale-prefixed URLs, LibreTranslate drafts, a language switcher, and hreflang tags.",
+  "description": "Manual reviewed translations for posts, pages, and theme templates with locale-prefixed URLs, a language switcher, and hreflang tags.",
   "author": "Adam Muiz",
   "author_uri": "https://jyavani.com/member/adammuiz/",
   "plugin_uri": "https://jyavani.com/plugin/content-translation/",
@@ -45,12 +45,6 @@
         "file": "admin/api/delete.php",
         "hidden": true,
         "roles": ["admin"]
-      },
-      {
-        "route": "admin/tools/content-translation/api/generate",
-        "file": "admin/api/generate.php",
-        "hidden": true,
-        "roles": ["admin"]
       }
     ],
     "nav": [
@@ -72,7 +66,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/css/content-translation.css"],
+    "css": ["/static/css/content-translation.css?v=1.3.1"],
     "js": []
   }
 }
