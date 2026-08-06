@@ -78,7 +78,7 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
           <input type="text" id="ct-title" name="title" value="<?= h((string)$translation['title']) ?>" maxlength="255">
         </div>
         <div class="ct-field">
-          <label for="ct-slug"><?= __('Slug') ?> <small class="muted">(<?= __('leave empty to reuse original slug') ?>)</small></label>
+          <label for="ct-slug"><?= __('Slug') ?> <small class="muted">(<?= __('leave empty to generate from translated title') ?>)</small></label>
           <input type="text" id="ct-slug" name="slug" value="<?= h((string)$translation['slug']) ?>" maxlength="255" pattern="[a-zA-Z0-9_\-/]*">
         </div>
         <div class="ct-field">
@@ -167,9 +167,12 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
   }
 
   function notify(type, msg) {
-    if (typeof window.showToast === 'function') {
-      window.showToast(msg, type);
+    if (window.NewNotifToast && typeof window.NewNotifToast.show === 'function') {
+      window.NewNotifToast.show({ message: msg, type: type });
+      return;
     }
+    const toast = window.safeToast || window.showToast;
+    if (typeof toast === 'function') toast(msg, type);
   }
 
   function getContent() {

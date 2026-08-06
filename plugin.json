@@ -1,8 +1,8 @@
 {
   "name": "content-translation",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "title": "Content Translation",
-  "description": "Manual reviewed translations for posts, pages, and theme templates with locale-prefixed URLs, a language switcher, and hreflang tags.",
+  "description": "Manual reviewed translations for posts, pages, themes, and categories with locale-prefixed URLs, a Content Translation widget, and hreflang tags.",
   "author": "Adam Muiz",
   "author_uri": "https://jyavani.com/member/adammuiz/",
   "plugin_uri": "https://jyavani.com/plugin/content-translation/",
@@ -24,6 +24,13 @@
         "route": "admin/tools/content-translation/edit",
         "file": "admin/edit.php",
         "title": "Edit Translation",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/content-translation/category-edit",
+        "file": "admin/category-edit.php",
+        "title": "Edit Category Translation",
         "hidden": true,
         "roles": ["admin"]
       },

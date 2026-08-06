@@ -75,4 +75,15 @@ $flashType = $_GET['flash_type'] ?? 'success';
 
     <button type="submit" class="btn btn-primary"><?= __('Save Settings') ?></button>
   </form>
+
+  <section class="ct-panel" style="margin-top:1.25rem">
+    <h3><?= __('Content Translation') ?></h3>
+    <p class="muted"><?= __('Use this shortcode in a Theme Customize HTML gadget or a Sidebar HTML/widget area. It automatically shows only published languages for the current post, theme, or category.') ?></p>
+    <div class="ct-field"><label><?= __('Shortcode') ?></label><pre class="ct-readonly ct-source-code">[[widget:lang_switcher style="pills"]]</pre></div>
+    <div class="ct-field"><label><?= __('Dropdown shortcode') ?></label><pre class="ct-readonly ct-source-code">[[widget:lang_switcher style="select"]]</pre></div>
+    <div class="ct-field"><label><?= __('Raw HTML example') ?></label><pre class="ct-readonly ct-source-code">&lt;div class="my-language-switcher"&gt;
+  [[widget:lang_switcher style="pills"]]
+&lt;/div&gt;</pre></div>
+    <p class="muted"><?= __('Do not add it as a regular Menu link: menu URLs are static. Use an HTML gadget in the menu area instead.') ?></p>
+  </section>
 </div>

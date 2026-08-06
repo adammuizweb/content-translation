@@ -4,6 +4,17 @@ Content Translation supports reviewed translations for `article`, `page`, and
 `theme` posts. Theme posts always use the manual CodeMirror editor so template
 markup, placeholders, scripts, styles, and structural HTML are preserved.
 
+## Categories
+
+Categories have reviewed translations for name, slug, and description. A
+localized category URL exists only after the category and every ancestor in its
+path have published translations. Localized category lists include only posts
+with a published translation, so their count and pagination remain consistent.
+
+Translate a category from its Core editor through the **Content Translation**
+locale picker. The plugin preserves category IDs and hierarchy; it only adapts
+display data, URLs, and collection visibility.
+
 ## Routes
 
 - The default content locale has no URL prefix.
@@ -46,3 +57,22 @@ hreflang links, or language switcher of the page being viewed.
 3. Save the reviewed translation as published.
 4. Assign the source theme post to a slot as usual. The translated version is
    selected automatically only for matching localized requests.
+
+## Content Translation widget
+
+The plugin registers the Content Translation widget visible in Theme Customize and
+Sidebar settings. To control the markup and placement, add this shortcode to a
+Theme Customize HTML gadget or Sidebar HTML/widget area:
+
+```html
+<div class="my-language-switcher">
+  [[widget:lang_switcher style="pills"]]
+</div>
+```
+
+Use `style="select"` for a dropdown. Regular Menu items are static links, so
+place the shortcode in an HTML gadget in the menu/header area rather than as a
+menu item.
+
+The widget is owned by this plugin. Core and the Default Theme do not install a
+translation gadget or language selector by default.

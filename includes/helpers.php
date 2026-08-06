@@ -24,6 +24,48 @@ if (!function_exists('ct_ensure_schema')) {
                 KEY idx_locale_slug (locale, slug)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             ct_add_column_if_missing($pdo, 'post_translations', 'status', "ENUM('draft','published') NOT NULL DEFAULT 'published'");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS category_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                category_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(10) NOT NULL,
+                name VARCHAR(255) NOT NULL DEFAULT '',
+                slug VARCHAR(255) NOT NULL DEFAULT '',
+                description TEXT NULL,
+                status ENUM('draft','published') NOT NULL DEFAULT 'published',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_category_locale (category_id, locale),
+                KEY idx_category_locale_slug (locale, slug)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS menu_item_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                menu_item_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(10) NOT NULL,
+                label VARCHAR(255) NOT NULL DEFAULT '',
+                url VARCHAR(2048) NOT NULL DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_menu_item_locale (menu_item_id, locale)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS sidebar_item_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                sidebar_item_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(10) NOT NULL,
+                title VARCHAR(255) NOT NULL DEFAULT '',
+                config MEDIUMTEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_sidebar_item_locale (sidebar_item_id, locale)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS author_profile_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(10) NOT NULL,
+                bio TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_author_profile_locale (user_id, locale)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         } catch (Throwable $e) {
             error_log('[content-translation] schema error: ' . $e->getMessage());
         }
@@ -211,6 +253,160 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
+    function ct_current_content_from_request(PDO $pdo): ?array {
+        $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
+        if ($path === '') return null;
+        $slug = rawurldecode((string)basename($path));
+        if ($slug === '' || $slug === 'page') return null;
+
+        $stmt = $pdo->prepare("SELECT * FROM posts WHERE slug = ? AND is_deleted = 0 AND type IN ('article','page','theme') LIMIT 1");
+        $stmt->execute([$slug]);
+        $post = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($post) return $post;
+
+        $stmt = $pdo->prepare("SELECT p.* FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.slug = ? AND pt.status = 'published' AND p.is_deleted = 0 LIMIT 1");
+        $stmt->execute([$slug]);
+        $post = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $post ?: null;
+    }
+
+    function ct_get_category_translation(PDO $pdo, int $categoryId, string $locale): ?array {
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM category_translations WHERE category_id = ? AND locale = ? LIMIT 1');
+        $stmt->execute([$categoryId, $locale]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    function ct_get_published_category_translation(PDO $pdo, int $categoryId, string $locale): ?array {
+        $translation = ct_get_category_translation($pdo, $categoryId, $locale);
+        return $translation && ($translation['status'] ?? 'published') === 'published' ? $translation : null;
+    }
+
+    function ct_save_category_translation(PDO $pdo, int $categoryId, string $locale, array $data): bool {
+        $status = in_array(($data['status'] ?? 'published'), ['draft', 'published'], true) ? $data['status'] : 'published';
+        $stmt = $pdo->prepare("INSERT INTO category_translations (category_id, locale, name, slug, description, status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), slug = VALUES(slug), description = VALUES(description), status = VALUES(status)");
+        return $stmt->execute([$categoryId, $locale, (string)($data['name'] ?? ''), (string)($data['slug'] ?? ''), (string)($data['description'] ?? ''), $status]);
+    }
+
+    function ct_menu_item_translations_for_menu(PDO $pdo, int $menuId): array {
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('SELECT mit.* FROM menu_item_translations mit INNER JOIN menu_items mi ON mi.id = mit.menu_item_id WHERE mi.menu_id = ?');
+        $stmt->execute([$menuId]);
+        $translations = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $translation) {
+            $translations[(int)$translation['menu_item_id']][(string)$translation['locale']] = $translation;
+        }
+        return $translations;
+    }
+
+    function ct_save_menu_item_translation(PDO $pdo, int $itemId, string $locale, array $data): bool {
+        if ($itemId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) return false;
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare("INSERT INTO menu_item_translations (menu_item_id, locale, label, url) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE label = VALUES(label), url = VALUES(url)");
+        return $stmt->execute([$itemId, $locale, (string)($data['label'] ?? ''), (string)($data['url'] ?? '')]);
+    }
+
+    function ct_sidebar_item_translation(PDO $pdo, int $itemId, string $locale): ?array {
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM sidebar_item_translations WHERE sidebar_item_id = ? AND locale = ? LIMIT 1');
+        $stmt->execute([$itemId, $locale]);
+        $translation = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($translation) {
+            $translation['config'] = json_decode((string)$translation['config'], true) ?: [];
+        }
+        return $translation;
+    }
+
+    function ct_save_sidebar_item_translation(PDO $pdo, int $itemId, string $locale, array $data): bool {
+        if ($itemId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) return false;
+        ct_ensure_schema($pdo);
+        $config = array_intersect_key((array)($data['config'] ?? []), array_flip(['placeholder', 'button', 'html']));
+        $stmt = $pdo->prepare("INSERT INTO sidebar_item_translations (sidebar_item_id, locale, title, config) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE title = VALUES(title), config = VALUES(config)");
+        return $stmt->execute([$itemId, $locale, (string)($data['title'] ?? ''), json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
+    function ct_get_author_profile_translation(PDO $pdo, int $userId, string $locale): ?array {
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM author_profile_translations WHERE user_id = ? AND locale = ? LIMIT 1');
+        $stmt->execute([$userId, $locale]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    function ct_save_author_profile_translation(PDO $pdo, int $userId, string $locale, string $bio): bool {
+        if ($userId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) return false;
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare("INSERT INTO author_profile_translations (user_id, locale, bio) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE bio = VALUES(bio)");
+        return $stmt->execute([$userId, $locale, $bio]);
+    }
+
+    function ct_overlay_category_translation(array $category, PDO $pdo, ?string $locale = null): array {
+        $locale ??= $GLOBALS['ct_request_locale'] ?? null;
+        if (!$locale) return $category;
+        $translation = ct_get_published_category_translation($pdo, (int)($category['id'] ?? 0), $locale);
+        if (!$translation) return $category;
+        foreach (['name', 'slug', 'description'] as $field) {
+            if (($translation[$field] ?? '') !== '') $category[$field] = $translation[$field];
+        }
+        return $category;
+    }
+
+    function ct_category_source_path(PDO $pdo, array $category): string {
+        $parts = [];
+        $current = $category;
+        if (!array_key_exists('parent_id', $current) && !empty($current['id'])) {
+            $stmt = $pdo->prepare('SELECT id, parent_id, slug FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
+            $stmt->execute([(int)$current['id']]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+        while (!empty($current['id'])) {
+            array_unshift($parts, (string)$current['slug']);
+            $parentId = (int)($current['parent_id'] ?? 0);
+            if ($parentId <= 0) break;
+            $stmt = $pdo->prepare('SELECT id, parent_id, slug FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
+            $stmt->execute([$parentId]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+        return implode('/', $parts);
+    }
+
+    function ct_category_translation_path(PDO $pdo, array $category, string $locale): ?string {
+        $parts = [];
+        $current = $category;
+        if (!array_key_exists('parent_id', $current) && !empty($current['id'])) {
+            $stmt = $pdo->prepare('SELECT id, parent_id, slug FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
+            $stmt->execute([(int)$current['id']]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+        while (!empty($current['id'])) {
+            $translation = ct_get_published_category_translation($pdo, (int)$current['id'], $locale);
+            if (!$translation || ($translation['slug'] ?? '') === '') return null;
+            array_unshift($parts, (string)$translation['slug']);
+            $parentId = (int)($current['parent_id'] ?? 0);
+            if ($parentId <= 0) break;
+            $stmt = $pdo->prepare('SELECT id, parent_id, slug FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
+            $stmt->execute([$parentId]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+        return implode('/', $parts);
+    }
+
+    function ct_find_category_translation_path(PDO $pdo, string $locale, string $path): ?array {
+        $parentId = null;
+        $category = null;
+        foreach (array_filter(explode('/', trim($path, '/'))) as $slug) {
+            $sql = 'SELECT c.id, c.parent_id, c.slug FROM category_translations ct INNER JOIN categories c ON c.id = ct.category_id WHERE ct.locale = ? AND ct.slug = ? AND ct.status = \'published\' AND c.is_deleted = 0';
+            $params = [$locale, rawurldecode($slug)];
+            $sql .= $parentId === null ? ' AND (c.parent_id IS NULL OR c.parent_id = 0)' : ' AND c.parent_id = ?';
+            if ($parentId !== null) $params[] = $parentId;
+            $stmt = $pdo->prepare($sql . ' LIMIT 1');
+            $stmt->execute($params);
+            $category = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (!$category) return null;
+            $parentId = (int)$category['id'];
+        }
+        return $category ? ['category' => $category, 'source_path' => ct_category_source_path($pdo, $category)] : null;
+    }
+
     function ct_base_url(): string {
         $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
         $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
@@ -243,5 +439,17 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_homepage_url(?string $locale = null): string {
         if ($locale === null || $locale === '' || $locale === content_default_locale()) return '/';
         return '/' . rawurlencode($locale) . '/';
+    }
+
+    function ct_category_url(PDO $pdo, array $category, ?string $locale = null, int $page = 1, string $query = ''): ?string {
+        if ($locale === null || $locale === '' || $locale === content_default_locale()) {
+            return function_exists('get_category_permalink') ? get_category_permalink($pdo, $category, $page, $query) : null;
+        }
+        $path = ct_category_translation_path($pdo, $category, $locale);
+        if ($path === null) return null;
+        $base = trim(function_exists('get_category_base') ? get_category_base($pdo) : '/category/', '/');
+        $url = '/' . $locale . '/' . ($base !== '' ? $base . '/' : '') . $path . '/';
+        if ($page > 1) $url .= 'page/' . $page . '/';
+        return $query !== '' ? $url . '?' . http_build_query(['q' => $query]) : $url;
     }
 }

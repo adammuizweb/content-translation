@@ -35,7 +35,11 @@ if (!$stmt->fetchColumn()) {
     return;
 }
 
+$title = trim((string)($_POST['title'] ?? ''));
 $slug = trim((string)($_POST['slug'] ?? ''));
+if ($slug === '' && $title !== '') {
+    $slug = function_exists('cms_slugify') ? (string)cms_slugify($title) : strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $title), '-'));
+}
 $slug = preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $slug);
 
 // Ensure translated slug is unique within this locale (excluding this post)
@@ -57,7 +61,7 @@ if ($slug !== '') {
 }
 
 $ok = ct_save_translation($pdo, $postId, $locale, [
-    'title'   => trim((string)($_POST['title'] ?? '')),
+    'title'   => $title,
     'slug'    => $slug,
     'content' => (string)($_POST['content'] ?? ''),
 ]);
