@@ -11,6 +11,31 @@ add_action('admin_init', function () {
     }
 });
 
+add_action('site_settings_after_general', function ($pdo) {
+    if (!$pdo instanceof PDO) return;
+    $locales = ct_enabled_locales($pdo);
+    if (empty($locales)) return;
+    $id = 'ct-site-identity';
+    echo '<div class="form-group" id="' . $id . '"><label>' . htmlspecialchars(__('Translated site identity'), ENT_QUOTES) . '</label><span class="field-note">' . htmlspecialchars(__('Used for the localized homepage title and description.'), ENT_QUOTES) . '</span>';
+    echo '<label style="display:block;margin-top:.6rem">' . htmlspecialchars(__('Language'), ENT_QUOTES) . '<select class="inp inp-w100 ct-site-identity-locale">';
+    foreach ($locales as $locale) {
+        echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '">' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</option>';
+    }
+    echo '</select></label>';
+    foreach ($locales as $index => $locale) {
+        $translation = ct_site_translation($pdo, $locale) ?? [];
+        echo '<div data-ct-site-locale="' . htmlspecialchars($locale, ENT_QUOTES) . '" style="display:' . ($index === 0 ? 'block' : 'none') . ';margin-top:.6rem"><input class="inp inp-w100" name="ct_site_title[' . htmlspecialchars($locale, ENT_QUOTES) . ']" value="' . htmlspecialchars((string)($translation['title'] ?? ''), ENT_QUOTES) . '" placeholder="' . htmlspecialchars(__('Site title'), ENT_QUOTES) . '"><textarea class="inp inp-w100" rows="2" style="display:block;margin-top:.6rem" name="ct_site_description[' . htmlspecialchars($locale, ENT_QUOTES) . ']" placeholder="' . htmlspecialchars(__('Site description'), ENT_QUOTES) . '">' . htmlspecialchars((string)($translation['description'] ?? ''), ENT_QUOTES) . '</textarea></div>';
+    }
+    echo '</div><script>(function(){var box=document.getElementById(' . json_encode($id) . ');if(!box)return;var select=box.querySelector(".ct-site-identity-locale");select.addEventListener("change",function(){box.querySelectorAll("[data-ct-site-locale]").forEach(function(field){field.style.display=field.dataset.ctSiteLocale===select.value?"block":"none"})})})()</script>';
+}, 10, 1);
+
+add_action('site_settings_after_save', function ($pdo, $input) {
+    if (!$pdo instanceof PDO || !is_array($input)) return;
+    foreach (ct_enabled_locales($pdo) as $locale) {
+        ct_save_site_translation($pdo, $locale, trim((string)($input['ct_site_title'][$locale] ?? '')), trim((string)($input['ct_site_description'][$locale] ?? '')));
+    }
+}, 10, 2);
+
 // ─── Translation picker in Core content editors ───
 if (!function_exists('ct_render_editor_translation_picker')) {
     function ct_render_editor_translation_picker(array $post, PDO $pdo): void {

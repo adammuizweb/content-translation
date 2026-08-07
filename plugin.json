@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "title": "Content Translation",
   "description": "Manual reviewed translations for posts, pages, themes, and categories with locale-prefixed URLs, a Content Translation widget, and hreflang tags.",
   "author": "Adam Muiz",
@@ -28,6 +28,27 @@
         "roles": ["admin"]
       },
       {
+        "route": "admin/tools/content-translation/posts",
+        "file": "admin/index.php",
+        "title": "Translate Posts",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/content-translation/pages",
+        "file": "admin/index.php",
+        "title": "Translate Pages",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/content-translation/themes",
+        "file": "admin/index.php",
+        "title": "Translate Theme Partials",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
         "route": "admin/tools/content-translation/category-edit",
         "file": "admin/category-edit.php",
         "title": "Edit Category Translation",
@@ -38,6 +59,13 @@
         "route": "admin/tools/content-translation/settings",
         "file": "admin/settings.php",
         "title": "Translation Settings",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/content-translation/export",
+        "file": "admin/export.php",
+        "title": "Export Translation Backup",
         "hidden": true,
         "roles": ["admin"]
       },
@@ -73,7 +101,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/css/content-translation.css?v=1.3.1"],
+    "css": ["/static/css/content-translation.css?v=1.5.0"],
     "js": []
   }
 }

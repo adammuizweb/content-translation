@@ -13,10 +13,12 @@ if (!$pdo) { echo '<p>Database not available.</p>'; return; }
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $selfUrl = $base . '/?page=admin/tools/content-translation/settings';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
+$exportUrl = $base . '/admin/tools/content-translation/export.php';
 
 $supported = function_exists('get_supported_locales') ? get_supported_locales() : ['en'];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $enabled = ct_enabled_locales($pdo);
+$sitemapLocales = ct_sitemap_locales($pdo);
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_settings'])) {
     if (!function_exists('csrf_check') || !csrf_check((string)($_POST['csrf_token'] ?? ''))) {
@@ -25,8 +27,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_sett
         }
         return;
     }
+    $newLocale = trim((string)($_POST['custom_locale'] ?? '')) ?: trim((string)($_POST['preset_locale'] ?? ''));
+    if ($newLocale !== '' && function_exists('register_content_locale')) register_content_locale($pdo, $newLocale);
     $selected = $_POST['locales'] ?? [];
+    if ($newLocale !== '') $selected[] = $newLocale;
     ct_set_enabled_locales($pdo, is_array($selected) ? $selected : []);
+    ct_set_sitemap_locales($pdo, is_array($_POST['sitemap_locales'] ?? null) ? $_POST['sitemap_locales'] : []);
     if (function_exists('adiwira_redirect_with_flash')) {
         adiwira_redirect_with_flash($selfUrl, 'success', __('Settings saved.'));
     }
@@ -73,8 +79,33 @@ $flashType = $_GET['flash_type'] ?? 'success';
       <?php endif; ?>
     </div>
 
+    <div class="ct-field">
+      <label><?= __('Add language') ?></label>
+      <p class="muted"><?= __('Added languages become available for translation after saving.') ?></p>
+      <select name="preset_locale"><option value=""><?= __('Choose a popular language') ?></option><?php foreach (function_exists('content_locale_presets') ? content_locale_presets() : [] as $code => $label): ?><?php if (!in_array($code, $supported, true)): ?><option value="<?= h($code) ?>"><?= h($label . ' (' . $code . ')') ?></option><?php endif; ?><?php endforeach; ?></select>
+      <span class="muted" style="margin:0 8px"><?= __('or') ?></span>
+      <input name="custom_locale" placeholder="Custom code, e.g. pt-BR" pattern="[a-z]{2,3}(-[A-Za-z0-9]{2,8})?">
+    </div>
+
     <button type="submit" class="btn btn-primary"><?= __('Save Settings') ?></button>
+
+    <div class="ct-field" style="margin-top:1.25rem">
+      <label><?= __('Include published translations in sitemap') ?></label>
+      <p class="muted"><?= __('Each selected locale receives separate posts and pages sitemap files.') ?></p>
+      <?php foreach ($enabled as $locale): ?>
+        <label class="ct-check"><input type="checkbox" name="sitemap_locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $sitemapLocales, true) ? 'checked' : '' ?>> <?= h(strtoupper($locale)) ?></label>
+      <?php endforeach; ?>
+    </div>
   </form>
+
+  <section class="ct-panel" style="margin-top:1.25rem">
+    <h3><?= __('Backup') ?></h3>
+    <p class="muted"><?= __('Download all translation data and plugin locale settings as a JSON backup before removing the plugin or making major changes.') ?></p>
+    <form method="post" action="<?= h($exportUrl) ?>">
+      <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+      <button type="submit" class="btn"><?= __('Export backup') ?></button>
+    </form>
+  </section>
 
   <section class="ct-panel" style="margin-top:1.25rem">
     <h3><?= __('Content Translation') ?></h3>

@@ -39,7 +39,7 @@ if (!$post) {
     return;
 }
 
-$translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => ''];
+$translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => ''];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$post['content'])
@@ -80,6 +80,10 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
         <div class="ct-field">
           <label for="ct-slug"><?= __('Slug') ?> <small class="muted">(<?= __('leave empty to generate from translated title') ?>)</small></label>
           <input type="text" id="ct-slug" name="slug" value="<?= h((string)$translation['slug']) ?>" maxlength="255" pattern="[a-zA-Z0-9_\-/]*">
+        </div>
+        <div class="ct-field">
+          <label for="ct-meta-description"><?= __('Meta description') ?></label>
+          <textarea id="ct-meta-description" name="meta_description" rows="3" maxlength="320" placeholder="<?= h(__('Leave empty to use an excerpt of the translated content.')) ?>"><?= h((string)($translation['meta_description'] ?? '')) ?></textarea>
         </div>
         <div class="ct-field">
           <label><?= __('Content') ?></label>

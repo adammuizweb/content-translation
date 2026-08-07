@@ -85,6 +85,18 @@ add_filter('router_path', function ($path) {
 });
 
 // ─── Content swap: overlay translated fields on the resolved post ───
+add_filter('site_title', function ($title, $pdo) {
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $translation = $locale && $pdo instanceof PDO ? ct_site_translation($pdo, $locale) : null;
+    return ($translation['title'] ?? '') !== '' ? $translation['title'] : $title;
+}, 10, 2);
+
+add_filter('site_description', function ($description, $pdo) {
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $translation = $locale && $pdo instanceof PDO ? ct_site_translation($pdo, $locale) : null;
+    return ($translation['description'] ?? '') !== '' ? $translation['description'] : $description;
+}, 10, 2);
+
 add_filter('post_data', function ($post, $pdo) {
     if (!is_array($post)) return $post;
     if (!$pdo instanceof PDO) return $post;
@@ -227,6 +239,39 @@ add_filter('author_profile_data', function ($author, $pdo) {
     if (($translation['bio'] ?? '') !== '') $author['bio'] = $translation['bio'];
     return $author;
 }, 10, 2);
+
+add_filter('sitemap_index_entries', function ($entries, $pdo, $domain, $limit) {
+    if (!$pdo instanceof PDO) return $entries;
+    foreach (ct_sitemap_locales($pdo) as $locale) {
+        foreach (['posts' => 'article', 'pages' => 'page'] as $type => $postType) {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published'");
+            $stmt->execute([$locale, $postType]);
+            $maps = (int)ceil((int)$stmt->fetchColumn() / max(1, (int)$limit));
+            for ($page = 1; $page <= $maps; $page++) $entries[] = ['loc' => $domain . '/sitemap_' . rawurlencode($locale) . '_' . $type . '_' . $page . '.xml'];
+        }
+    }
+    return $entries;
+}, 10, 4);
+
+add_filter('sitemap_locale_rendered', function ($rendered, $locale, $type, $pageNum, $pdo) {
+    if ($rendered || !$pdo instanceof PDO || !in_array($locale, ct_sitemap_locales($pdo), true) || !in_array($type, ['posts', 'pages'], true)) return $rendered;
+    $postType = $type === 'posts' ? 'article' : 'page';
+    $limit = 30;
+    $stmt = $pdo->prepare("SELECT pt.slug, COALESCE(pt.updated_at, p.updated_at, p.created_at) AS changed_at FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published' ORDER BY p.created_at DESC LIMIT ? OFFSET ?");
+    $stmt->bindValue(1, $locale);
+    $stmt->bindValue(2, $postType);
+    $stmt->bindValue(3, $limit, PDO::PARAM_INT);
+    $stmt->bindValue(4, (max(1, (int)$pageNum) - 1) * $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    header('Content-Type: application/xml; charset=utf-8');
+    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n";
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $loc = ct_base_url() . ct_post_url((string)$row['slug'], $locale);
+        echo '  <url><loc>' . htmlspecialchars($loc, ENT_XML1) . '</loc><lastmod>' . htmlspecialchars(date('c', strtotime((string)$row['changed_at'])), ENT_XML1) . '</lastmod></url>' . "\n";
+    }
+    echo '</urlset>';
+    return true;
+}, 10, 5);
 
 add_filter('collection_rows', function ($rows, $context) {
     $pdo = $GLOBALS['pdo'] ?? null;

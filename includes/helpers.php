@@ -24,6 +24,16 @@ if (!function_exists('ct_ensure_schema')) {
                 KEY idx_locale_slug (locale, slug)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             ct_add_column_if_missing($pdo, 'post_translations', 'status', "ENUM('draft','published') NOT NULL DEFAULT 'published'");
+            ct_add_column_if_missing($pdo, 'post_translations', 'meta_description', "VARCHAR(320) NOT NULL DEFAULT ''");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS site_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                locale VARCHAR(10) NOT NULL,
+                title VARCHAR(255) NOT NULL DEFAULT '',
+                description TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_site_locale (locale)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             $pdo->exec("CREATE TABLE IF NOT EXISTS category_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 category_id INT UNSIGNED NOT NULL,
@@ -111,6 +121,58 @@ if (!function_exists('ct_ensure_schema')) {
         return settings_set($pdo, 'content_translation_locales', json_encode($clean));
     }
 
+    function ct_sitemap_locales(PDO $pdo): array {
+        $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_sitemap_locales', '') : '';
+        $selected = is_string($raw) ? json_decode($raw, true) : [];
+        return array_values(array_intersect(ct_enabled_locales($pdo), is_array($selected) ? array_map('strval', $selected) : []));
+    }
+
+    function ct_set_sitemap_locales(PDO $pdo, array $locales): bool {
+        $clean = array_values(array_intersect(ct_enabled_locales($pdo), array_map('strval', $locales)));
+        return function_exists('settings_set') && settings_set($pdo, 'content_translation_sitemap_locales', json_encode($clean));
+    }
+
+    function ct_site_translation(PDO $pdo, string $locale): ?array {
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM site_translations WHERE locale = ? LIMIT 1');
+        $stmt->execute([$locale]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    function ct_save_site_translation(PDO $pdo, string $locale, string $title, string $description): bool {
+        if (!in_array($locale, ct_enabled_locales($pdo), true)) return false;
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('INSERT INTO site_translations (locale, title, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description)');
+        return $stmt->execute([$locale, $title, $description]);
+    }
+
+    function ct_export_data(PDO $pdo): array {
+        ct_ensure_schema($pdo);
+        $tables = [
+            'post_translations' => 'SELECT pt.*, p.type AS source_type, p.slug AS source_slug, p.title AS source_title FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id ORDER BY pt.post_id, pt.locale',
+            'category_translations' => 'SELECT ct.*, c.slug AS source_slug, c.name AS source_name FROM category_translations ct INNER JOIN categories c ON c.id = ct.category_id ORDER BY ct.category_id, ct.locale',
+            'menu_item_translations' => 'SELECT mit.*, mi.menu_id FROM menu_item_translations mit INNER JOIN menu_items mi ON mi.id = mit.menu_item_id ORDER BY mit.menu_item_id, mit.locale',
+            'sidebar_item_translations' => 'SELECT * FROM sidebar_item_translations ORDER BY sidebar_item_id, locale',
+            'author_profile_translations' => 'SELECT apt.*, u.email AS source_email FROM author_profile_translations apt INNER JOIN users u ON u.id = apt.user_id ORDER BY apt.user_id, apt.locale',
+            'site_translations' => 'SELECT * FROM site_translations ORDER BY locale',
+        ];
+        $translations = [];
+        foreach ($tables as $name => $sql) {
+            $translations[$name] = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        return [
+            'format' => 'jyavani-content-translation-export',
+            'version' => 1,
+            'exported_at' => gmdate('c'),
+            'settings' => [
+                'enabled_locales' => ct_enabled_locales($pdo),
+                'sitemap_locales' => ct_sitemap_locales($pdo),
+            ],
+            'translations' => $translations,
+        ];
+    }
+
     function ct_get_translation(PDO $pdo, int $postId, string $locale): ?array {
         static $cache = [];
         $key = $postId . ':' . $locale;
@@ -132,15 +194,16 @@ if (!function_exists('ct_ensure_schema')) {
         ct_ensure_schema($pdo);
         try {
             $status = (string)($data['status'] ?? 'published');
-            $stmt = $pdo->prepare("INSERT INTO post_translations (post_id, locale, title, slug, content, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE title = VALUES(title), slug = VALUES(slug), content = VALUES(content), status = VALUES(status)");
+            $stmt = $pdo->prepare("INSERT INTO post_translations (post_id, locale, title, slug, content, meta_description, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE title = VALUES(title), slug = VALUES(slug), content = VALUES(content), meta_description = VALUES(meta_description), status = VALUES(status)");
             return $stmt->execute([
                 $postId,
                 $locale,
                 (string)($data['title'] ?? ''),
                 (string)($data['slug'] ?? ''),
                 (string)($data['content'] ?? ''),
+                trim((string)($data['meta_description'] ?? '')),
                 in_array($status, ['draft', 'published'], true) ? $status : 'published',
             ]);
         } catch (Throwable $e) {
@@ -236,6 +299,12 @@ if (!function_exists('ct_ensure_schema')) {
             if (isset($translation[$field]) && $translation[$field] !== '' && $translation[$field] !== null) {
                 $post[$field] = $translation[$field];
             }
+        }
+        if (($translation['meta_description'] ?? '') !== '') {
+            $meta = !empty($post['meta']) ? (is_string($post['meta']) ? json_decode($post['meta'], true) : $post['meta']) : [];
+            $meta = is_array($meta) ? $meta : [];
+            $meta['meta_tags']['description'] = $translation['meta_description'];
+            $post['meta'] = $meta;
         }
         $post['ct_locale'] = $locale;
         $post['ct_translated_slug'] = (string)($translation['slug'] ?? '') !== '' ? (string)$translation['slug'] : (string)($post['slug'] ?? '');
