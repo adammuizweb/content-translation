@@ -1,12 +1,17 @@
 {
   "name": "content-translation",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "title": "Content Translation",
   "description": "Manual reviewed translations for posts, pages, themes, and categories with locale-prefixed URLs, a Content Translation widget, and hreflang tags.",
   "author": "Adam Muiz",
   "author_uri": "https://jyavani.com/member/adammuiz/",
   "plugin_uri": "https://jyavani.com/plugin/content-translation/",
   "homepage": "https://jyavani.com/plugin/content-translation/",
+  "github_url": "https://github.com/adammuizweb/content-translation",
+  "store": {
+    "url": "https://jyavani.com/plugin-store",
+    "slug": "content-translation"
+  },
   "icon": "icon.png",
   "requires": {
     "php": ">=8.1",
@@ -101,7 +106,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.5.1"],
+    "css": ["/static/plugins/content-translation/content-translation.css?v=1.5.2"],
     "js": []
   }
 }
