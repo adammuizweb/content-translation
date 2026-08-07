@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "title": "Content Translation",
   "description": "Manual reviewed translations for posts, pages, themes, and categories with locale-prefixed URLs, a Content Translation widget, and hreflang tags.",
   "author": "Adam Muiz",
@@ -106,7 +106,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.5.2"],
+    "css": ["/static/plugins/content-translation/content-translation.css?v=1.5.3"],
     "js": []
   }
 }

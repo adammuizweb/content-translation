@@ -56,45 +56,68 @@ $flashType = $_GET['flash_type'] ?? 'success';
     <div class="ct-flash ct-flash-<?= h($flashType) ?>"><?= h($flash) ?></div>
   <?php endif; ?>
 
-  <form method="post" class="ct-panel ct-settings-form">
+  <form method="post" class="ct-settings-form">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
     <input type="hidden" name="ct_save_settings" value="1">
 
-    <div class="ct-field">
-      <label><?= __('Default locale') ?></label>
-      <div class="ct-readonly"><strong><?= h(strtoupper($defaultLocale)) ?></strong> <span class="muted">(<?= __('no URL prefix') ?>)</span></div>
+    <div class="ct-settings-grid">
+      <section class="ct-settings-card ct-settings-card--default">
+        <label><?= __('Default locale') ?></label>
+        <div class="ct-default-locale">
+          <strong><?= h(strtoupper($defaultLocale)) ?></strong>
+          <span><?= __('no URL prefix') ?></span>
+        </div>
+      </section>
+
+      <section class="ct-settings-card ct-settings-card--locales">
+        <div class="ct-settings-card__heading">
+          <label><?= __('Enabled translation locales') ?></label>
+          <span class="muted"><?= __('Choose which locales content can be translated into.') ?></span>
+        </div>
+        <div class="ct-locale-options">
+          <?php foreach ($supported as $locale): ?>
+            <?php if ($locale === $defaultLocale) continue; ?>
+            <label class="ct-locale-option">
+              <input type="checkbox" name="locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $enabled, true) ? 'checked' : '' ?>>
+              <span><?= h(strtoupper($locale)) ?></span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+        <?php if (count($supported) < 2): ?>
+          <p class="muted"><?= __('Only one locale is supported by this installation.') ?></p>
+        <?php endif; ?>
+      </section>
     </div>
 
-    <div class="ct-field">
-      <label><?= __('Enabled translation locales') ?></label>
-      <?php foreach ($supported as $locale): ?>
-        <?php if ($locale === $defaultLocale) continue; ?>
-        <label class="ct-check">
-          <input type="checkbox" name="locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $enabled, true) ? 'checked' : '' ?>>
-          <?= h(strtoupper($locale)) ?>
-        </label>
-      <?php endforeach; ?>
-      <?php if (count($supported) < 2): ?>
-        <p class="muted"><?= __('Only one locale is supported by this installation.') ?></p>
-      <?php endif; ?>
-    </div>
+    <section class="ct-settings-card ct-settings-card--add">
+      <div class="ct-settings-card__heading">
+        <label><?= __('Add language') ?></label>
+        <span class="muted"><?= __('Added languages become available for translation after saving.') ?></span>
+      </div>
+      <div class="ct-add-language-controls">
+        <select name="preset_locale"><option value=""><?= __('Choose a popular language') ?></option><?php foreach (function_exists('content_locale_presets') ? content_locale_presets() : [] as $code => $label): ?><?php if (!in_array($code, $supported, true)): ?><option value="<?= h($code) ?>"><?= h($label . ' (' . $code . ')') ?></option><?php endif; ?><?php endforeach; ?></select>
+        <span class="ct-add-language-or"><?= __('or') ?></span>
+        <input name="custom_locale" placeholder="Custom code, e.g. pt-BR" pattern="[a-z]{2,3}(-[A-Za-z0-9]{2,8})?">
+      </div>
+    </section>
 
-    <div class="ct-field">
-      <label><?= __('Add language') ?></label>
-      <p class="muted"><?= __('Added languages become available for translation after saving.') ?></p>
-      <select name="preset_locale"><option value=""><?= __('Choose a popular language') ?></option><?php foreach (function_exists('content_locale_presets') ? content_locale_presets() : [] as $code => $label): ?><?php if (!in_array($code, $supported, true)): ?><option value="<?= h($code) ?>"><?= h($label . ' (' . $code . ')') ?></option><?php endif; ?><?php endforeach; ?></select>
-      <span class="muted" style="margin:0 8px"><?= __('or') ?></span>
-      <input name="custom_locale" placeholder="Custom code, e.g. pt-BR" pattern="[a-z]{2,3}(-[A-Za-z0-9]{2,8})?">
-    </div>
+    <section class="ct-settings-card ct-settings-card--sitemap">
+      <div class="ct-settings-card__heading">
+        <label><?= __('Include published translations in sitemap') ?></label>
+        <span class="muted"><?= __('Each selected locale receives separate posts and pages sitemap files.') ?></span>
+      </div>
+      <div class="ct-locale-options ct-locale-options--sitemap">
+        <?php foreach ($enabled as $locale): ?>
+          <label class="ct-locale-option">
+            <input type="checkbox" name="sitemap_locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $sitemapLocales, true) ? 'checked' : '' ?>>
+            <span><?= h(strtoupper($locale)) ?></span>
+          </label>
+        <?php endforeach; ?>
+      </div>
+    </section>
 
-    <button type="submit" class="btn btn-primary"><?= __('Save Settings') ?></button>
-
-    <div class="ct-field" style="margin-top:1.25rem">
-      <label><?= __('Include published translations in sitemap') ?></label>
-      <p class="muted"><?= __('Each selected locale receives separate posts and pages sitemap files.') ?></p>
-      <?php foreach ($enabled as $locale): ?>
-        <label class="ct-check"><input type="checkbox" name="sitemap_locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $sitemapLocales, true) ? 'checked' : '' ?>> <?= h(strtoupper($locale)) ?></label>
-      <?php endforeach; ?>
+    <div class="ct-settings-actions">
+      <button type="submit" class="btn btn-primary"><?= __('Save Settings') ?></button>
     </div>
   </form>
 
