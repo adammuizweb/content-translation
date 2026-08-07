@@ -555,7 +555,7 @@ if (!function_exists('ct_ensure_schema')) {
         if ($path === null) return null;
         $base = trim(function_exists('get_category_base') ? get_category_base($pdo) : '/category/', '/');
         $url = '/' . $locale . '/' . ($base !== '' ? $base . '/' : '') . $path . '/';
-        if ($page > 1) $url .= 'page/' . $page . '/';
+        if ($page > 1) $url .= 'p/' . $page . '/';
         return $query !== '' ? $url . '?' . http_build_query(['q' => $query]) : $url;
     }
 }

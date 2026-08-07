@@ -57,9 +57,9 @@ add_filter('router_path', function ($path) {
         }
         $categoryPath = $categoryMatch['rest'];
         $paginationSuffix = '';
-        if (preg_match('#^(.*?)/page/(\d+)$#', $categoryPath, $matches)) {
+        if (preg_match('#^(.*?)/(?:p|page)/(\d+)$#', $categoryPath, $matches)) {
             $categoryPath = $matches[1];
-            $paginationSuffix = '/page/' . $matches[2];
+            $paginationSuffix = '/p/' . $matches[2];
         }
         $resolved = ct_find_category_translation_path($pdo, $first, $categoryPath);
         if (!$resolved) ct_render_not_found();
@@ -298,7 +298,7 @@ add_filter('collection_url', function ($url, $type, $context) {
         if ($path === null && $type !== 'category_index') return $url;
         $localized = '/' . $locale . '/' . ($base !== '' ? $base . '/' : '') . ($path ? $path . '/' : '');
         $page = max(1, (int)($context['page'] ?? 1));
-        if ($page > 1) $localized .= 'page/' . $page . '/';
+        if ($page > 1) $localized .= 'p/' . $page . '/';
         $query = (string)($context['query'] ?? '');
         return $query !== '' ? $localized . '?' . http_build_query(['q' => $query]) : $localized;
     }
