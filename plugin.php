@@ -28,6 +28,6 @@ add_action('plugin_uninstall', function (string $name): void {
         $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
     }
 
-    $stmt = $pdo->prepare('DELETE FROM settings WHERE `key` IN (?, ?)');
-    $stmt->execute(['content_translation_locales', 'content_translation_sitemap_locales']);
+    $stmt = $pdo->prepare('DELETE FROM settings WHERE `key` IN (?, ?, ?)');
+    $stmt->execute(['content_translation_locales', 'content_translation_locale_directions', 'content_translation_sitemap_locales']);
 });

@@ -318,6 +318,13 @@ add_filter('html_lang_attribute', function ($lang) {
     return $GLOBALS['ct_request_locale'] ?? $lang;
 });
 
+add_filter('html_dir_attribute', function ($direction) {
+    $locale = $GLOBALS['ct_request_locale'] ?? (function_exists('content_default_locale') ? content_default_locale() : null);
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$locale || !($pdo instanceof PDO)) return $direction;
+    return ct_locale_direction($pdo, (string)$locale);
+}, 10, 1);
+
 add_filter('canonical_url', function ($url) {
     $post = $GLOBALS['ct_current_post'] ?? null;
     $locale = $GLOBALS['ct_request_locale'] ?? null;

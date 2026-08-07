@@ -18,6 +18,7 @@ $exportUrl = $base . '/admin/tools/content-translation/export.php';
 $supported = function_exists('get_supported_locales') ? get_supported_locales() : ['en'];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $enabled = ct_enabled_locales($pdo);
+$directions = ct_locale_directions($pdo);
 $sitemapLocales = ct_sitemap_locales($pdo);
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_settings'])) {
@@ -32,6 +33,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_sett
     $selected = $_POST['locales'] ?? [];
     if ($newLocale !== '') $selected[] = $newLocale;
     ct_set_enabled_locales($pdo, is_array($selected) ? $selected : []);
+    $newDirection = ($_POST['new_locale_direction'] ?? '') === 'rtl' ? 'rtl' : 'ltr';
+    $submittedDirections = is_array($_POST['locale_directions'] ?? null) ? $_POST['locale_directions'] : [];
+    if ($newLocale !== '') $submittedDirections[$newLocale] = $newDirection;
+    ct_set_locale_directions($pdo, $submittedDirections);
     ct_set_sitemap_locales($pdo, is_array($_POST['sitemap_locales'] ?? null) ? $_POST['sitemap_locales'] : []);
     if (function_exists('adiwira_redirect_with_flash')) {
         adiwira_redirect_with_flash($selfUrl, 'success', __('Settings saved.'));
@@ -67,6 +72,13 @@ $flashType = $_GET['flash_type'] ?? 'success';
           <strong><?= h(strtoupper($defaultLocale)) ?></strong>
           <span><?= __('no URL prefix') ?></span>
         </div>
+        <label class="ct-default-direction">
+          <span><?= __('Text direction') ?></span>
+          <select name="locale_directions[<?= h($defaultLocale) ?>]">
+            <option value="ltr" <?= ($directions[$defaultLocale] ?? ct_default_locale_direction($defaultLocale)) === 'ltr' ? 'selected' : '' ?>><?= __('Left to right') ?></option>
+            <option value="rtl" <?= ($directions[$defaultLocale] ?? ct_default_locale_direction($defaultLocale)) === 'rtl' ? 'selected' : '' ?>><?= __('Right to left') ?></option>
+          </select>
+        </label>
       </section>
 
       <section class="ct-settings-card ct-settings-card--locales">
@@ -77,10 +89,19 @@ $flashType = $_GET['flash_type'] ?? 'success';
         <div class="ct-locale-options">
           <?php foreach ($supported as $locale): ?>
             <?php if ($locale === $defaultLocale) continue; ?>
-            <label class="ct-locale-option">
-              <input type="checkbox" name="locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $enabled, true) ? 'checked' : '' ?>>
-              <span><?= h(strtoupper($locale)) ?></span>
-            </label>
+            <div class="ct-locale-row">
+              <label class="ct-locale-option">
+                <input type="checkbox" name="locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $enabled, true) ? 'checked' : '' ?>>
+                <span><?= h(strtoupper($locale)) ?></span>
+              </label>
+              <label class="ct-direction-select">
+                <span class="sr-only"><?= __('Text direction') ?></span>
+                <select name="locale_directions[<?= h($locale) ?>]">
+                  <option value="ltr" <?= ($directions[$locale] ?? ct_default_locale_direction($locale)) === 'ltr' ? 'selected' : '' ?>><?= __('Left to right') ?></option>
+                  <option value="rtl" <?= ($directions[$locale] ?? ct_default_locale_direction($locale)) === 'rtl' ? 'selected' : '' ?>><?= __('Right to left') ?></option>
+                </select>
+              </label>
+            </div>
           <?php endforeach; ?>
         </div>
         <?php if (count($supported) < 2): ?>
@@ -98,6 +119,13 @@ $flashType = $_GET['flash_type'] ?? 'success';
         <select name="preset_locale"><option value=""><?= __('Choose a popular language') ?></option><?php foreach (function_exists('content_locale_presets') ? content_locale_presets() : [] as $code => $label): ?><?php if (!in_array($code, $supported, true)): ?><option value="<?= h($code) ?>"><?= h($label . ' (' . $code . ')') ?></option><?php endif; ?><?php endforeach; ?></select>
         <span class="ct-add-language-or"><?= __('or') ?></span>
         <input name="custom_locale" placeholder="Custom code, e.g. pt-BR" pattern="[a-z]{2,3}(-[A-Za-z0-9]{2,8})?">
+        <label class="ct-new-direction">
+          <span><?= __('Text direction') ?></span>
+          <select name="new_locale_direction">
+            <option value="ltr"><?= __('Left to right') ?></option>
+            <option value="rtl"><?= __('Right to left') ?></option>
+          </select>
+        </label>
       </div>
     </section>
 

@@ -121,6 +121,42 @@ if (!function_exists('ct_ensure_schema')) {
         return settings_set($pdo, 'content_translation_locales', json_encode($clean));
     }
 
+    function ct_default_locale_direction(string $locale): string {
+        $language = strtolower((string)strtok($locale, '-'));
+        return in_array($language, ['ar', 'fa', 'he', 'ps', 'ur', 'yi'], true) ? 'rtl' : 'ltr';
+    }
+
+    function ct_locale_directions(PDO $pdo): array {
+        $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_locale_directions', '') : '';
+        $stored = is_string($raw) ? json_decode($raw, true) : [];
+        $directions = [];
+        $default = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
+        foreach (array_values(array_unique(array_merge([$default], ct_enabled_locales($pdo)))) as $locale) {
+            $direction = is_array($stored) ? ($stored[$locale] ?? null) : null;
+            $directions[$locale] = in_array($direction, ['ltr', 'rtl'], true)
+                ? $direction
+                : ct_default_locale_direction($locale);
+        }
+        return $directions;
+    }
+
+    function ct_locale_direction(PDO $pdo, string $locale): string {
+        $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_locale_directions', '') : '';
+        $stored = is_string($raw) ? json_decode($raw, true) : [];
+        $direction = is_array($stored) ? ($stored[$locale] ?? null) : null;
+        return in_array($direction, ['ltr', 'rtl'], true) ? $direction : ct_default_locale_direction($locale);
+    }
+
+    function ct_set_locale_directions(PDO $pdo, array $directions): bool {
+        $clean = [];
+        $default = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
+        foreach (array_values(array_unique(array_merge([$default], ct_enabled_locales($pdo)))) as $locale) {
+            $direction = $directions[$locale] ?? ct_default_locale_direction($locale);
+            $clean[$locale] = $direction === 'rtl' ? 'rtl' : 'ltr';
+        }
+        return function_exists('settings_set') && settings_set($pdo, 'content_translation_locale_directions', json_encode($clean));
+    }
+
     function ct_sitemap_locales(PDO $pdo): array {
         $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_sitemap_locales', '') : '';
         $selected = is_string($raw) ? json_decode($raw, true) : [];
@@ -167,6 +203,7 @@ if (!function_exists('ct_ensure_schema')) {
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),
+                'locale_directions' => ct_locale_directions($pdo),
                 'sitemap_locales' => ct_sitemap_locales($pdo),
             ],
             'translations' => $translations,

@@ -46,6 +46,7 @@ $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$translation['content']);
 $publishedTranslation = ct_get_published_translation($pdo, $postId, $locale);
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
+$isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
 ?>
 
 <div class="ct-admin ct-editor">
@@ -66,7 +67,7 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
   </div>
 
   <div class="ct-editor-stack">
-    <section class="ct-panel ct-translation-panel">
+    <section class="ct-panel ct-translation-panel<?= $isRtl ? ' ct-rtl-editor' : '' ?>" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
       <h3><?= __('Translation') ?> (<?= h(strtoupper($locale)) ?>)</h3>
       <form id="ct-form">
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
@@ -75,7 +76,7 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
 
         <div class="ct-field">
           <label for="ct-title"><?= __('Title') ?></label>
-          <input type="text" id="ct-title" name="title" value="<?= h((string)$translation['title']) ?>" maxlength="255">
+          <input type="text" id="ct-title" name="title" value="<?= h((string)$translation['title']) ?>" maxlength="255" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
         </div>
         <div class="ct-field">
           <label for="ct-slug"><?= __('Slug') ?> <small class="muted">(<?= __('leave empty to generate from translated title') ?>)</small></label>
@@ -83,15 +84,15 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
         </div>
         <div class="ct-field">
           <label for="ct-meta-description"><?= __('Meta description') ?></label>
-          <textarea id="ct-meta-description" name="meta_description" rows="3" maxlength="320" placeholder="<?= h(__('Leave empty to use an excerpt of the translated content.')) ?>"><?= h((string)($translation['meta_description'] ?? '')) ?></textarea>
+          <textarea id="ct-meta-description" name="meta_description" rows="3" maxlength="320" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>" placeholder="<?= h(__('Leave empty to use an excerpt of the translated content.')) ?>"><?= h((string)($translation['meta_description'] ?? '')) ?></textarea>
         </div>
         <div class="ct-field">
           <label><?= __('Content') ?></label>
           <?php if ($usesCodeMirror): ?>
             <p class="muted ct-editor-hint"><?= __('Complex HTML detected. CodeMirror preserves the source markup.') ?></p>
-            <textarea id="ct-codemirror" name="content"><?= h((string)$translation['content']) ?></textarea>
+            <textarea id="ct-codemirror" name="content" dir="ltr"><?= h((string)$translation['content']) ?></textarea>
           <?php else: ?>
-            <div id="ct-quill" class="adam-quill"><?= (string)$translation['content'] ?></div>
+            <div id="ct-quill" class="adam-quill" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>"><?= (string)$translation['content'] ?></div>
           <?php endif; ?>
         </div>
 
