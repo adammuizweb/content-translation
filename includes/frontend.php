@@ -234,7 +234,9 @@ add_filter('author_permalink', function ($url, $author, $page, $query) {
 
 add_filter('author_profile_data', function ($author, $pdo) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
-    if (!$locale || !is_array($author) || !$pdo instanceof PDO) return $author;
+    if (!is_array($author) || !$pdo instanceof PDO) return $author;
+    $GLOBALS['ct_current_author'] = $author;
+    if (!$locale) return $author;
     $translation = ct_get_author_profile_translation($pdo, (int)($author['id'] ?? 0), $locale);
     if (($translation['bio'] ?? '') !== '') $author['bio'] = $translation['bio'];
     return $author;
@@ -386,6 +388,15 @@ if (!function_exists('ct_switcher_html')) {
     function ct_switcher_html(PDO $pdo, string $title = '', string $style = 'pills'): string {
         $current = $GLOBALS['ct_current_post'] ?? null;
         $currentCategory = $GLOBALS['ct_current_category'] ?? null;
+        $currentAuthor = $GLOBALS['ct_current_author'] ?? null;
+
+        $localizedRequestUrl = static function (?string $locale = null): string {
+            $path = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
+            $query = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_QUERY) ?? '');
+            $path = preg_replace('#^/[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?(?=/|$)#', '', $path) ?: '/';
+            $prefix = $locale ? '/' . rawurlencode($locale) : '';
+            return $prefix . ($path === '/' ? '/' : '/' . ltrim($path, '/')) . ($query !== '' ? '?' . $query : '');
+        };
 
         $requestContent = ct_current_content_from_request($pdo);
         if (is_array($requestContent)) {
@@ -406,6 +417,19 @@ if (!function_exists('ct_switcher_html')) {
                 $url = ct_category_url($pdo, $currentCategory, $locale, $page, $query);
                 if ($url !== null) $items[] = ['locale' => $locale, 'url' => $url, 'active' => $currentLocale === $locale];
             }
+            return ct_render_switcher_items($items, $title, $style);
+        }
+        if (!is_array($current) && is_array($currentAuthor)) {
+            $items = [['locale' => content_default_locale(), 'url' => $localizedRequestUrl(), 'active' => $currentLocale === content_default_locale()]];
+            foreach ($locales as $locale) {
+                if (!ct_get_author_profile_translation($pdo, (int)($currentAuthor['id'] ?? 0), $locale)) continue;
+                $items[] = ['locale' => $locale, 'url' => $localizedRequestUrl($locale), 'active' => $currentLocale === $locale];
+            }
+            return ct_render_switcher_items($items, $title, $style);
+        }
+        if (!is_array($current) && (preg_match('#^/\d{4}(?:/\d{2})?/#', (string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) || isset($_GET['s']))) {
+            $items = [['locale' => content_default_locale(), 'url' => $localizedRequestUrl(), 'active' => $currentLocale === content_default_locale()]];
+            foreach ($locales as $locale) $items[] = ['locale' => $locale, 'url' => $localizedRequestUrl($locale), 'active' => $currentLocale === $locale];
             return ct_render_switcher_items($items, $title, $style);
         }
         if (!is_array($current)) return '';
