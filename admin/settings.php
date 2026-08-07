@@ -72,13 +72,11 @@ $flashType = $_GET['flash_type'] ?? 'success';
           <strong><?= h(strtoupper($defaultLocale)) ?></strong>
           <span><?= __('no URL prefix') ?></span>
         </div>
-        <label class="ct-default-direction">
+        <div class="ct-direction-toggle" role="group" aria-label="<?= h(__('Text direction')) ?>">
           <span><?= __('Text direction') ?></span>
-          <select name="locale_directions[<?= h($defaultLocale) ?>]">
-            <option value="ltr" <?= ($directions[$defaultLocale] ?? ct_default_locale_direction($defaultLocale)) === 'ltr' ? 'selected' : '' ?>><?= __('Left to right') ?></option>
-            <option value="rtl" <?= ($directions[$defaultLocale] ?? ct_default_locale_direction($defaultLocale)) === 'rtl' ? 'selected' : '' ?>><?= __('Right to left') ?></option>
-          </select>
-        </label>
+          <label><input type="radio" name="locale_directions[<?= h($defaultLocale) ?>]" value="ltr" <?= ($directions[$defaultLocale] ?? ct_default_locale_direction($defaultLocale)) === 'ltr' ? 'checked' : '' ?>><b>LTR</b></label>
+          <label><input type="radio" name="locale_directions[<?= h($defaultLocale) ?>]" value="rtl" <?= ($directions[$defaultLocale] ?? ct_default_locale_direction($defaultLocale)) === 'rtl' ? 'checked' : '' ?>><b>RTL</b></label>
+        </div>
       </section>
 
       <section class="ct-settings-card ct-settings-card--locales">
@@ -94,13 +92,10 @@ $flashType = $_GET['flash_type'] ?? 'success';
                 <input type="checkbox" name="locales[]" value="<?= h($locale) ?>" <?= in_array($locale, $enabled, true) ? 'checked' : '' ?>>
                 <span><?= h(strtoupper($locale)) ?></span>
               </label>
-              <label class="ct-direction-select">
-                <span class="sr-only"><?= __('Text direction') ?></span>
-                <select name="locale_directions[<?= h($locale) ?>]">
-                  <option value="ltr" <?= ($directions[$locale] ?? ct_default_locale_direction($locale)) === 'ltr' ? 'selected' : '' ?>><?= __('Left to right') ?></option>
-                  <option value="rtl" <?= ($directions[$locale] ?? ct_default_locale_direction($locale)) === 'rtl' ? 'selected' : '' ?>><?= __('Right to left') ?></option>
-                </select>
-              </label>
+              <div class="ct-direction-toggle" role="group" aria-label="<?= h(__('Text direction')) ?>">
+                <label><input type="radio" name="locale_directions[<?= h($locale) ?>]" value="ltr" <?= ($directions[$locale] ?? ct_default_locale_direction($locale)) === 'ltr' ? 'checked' : '' ?>><b>LTR</b></label>
+                <label><input type="radio" name="locale_directions[<?= h($locale) ?>]" value="rtl" <?= ($directions[$locale] ?? ct_default_locale_direction($locale)) === 'rtl' ? 'checked' : '' ?>><b>RTL</b></label>
+              </div>
             </div>
           <?php endforeach; ?>
         </div>
