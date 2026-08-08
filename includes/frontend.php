@@ -483,6 +483,9 @@ if (!function_exists('ct_switcher_html')) {
             $prefix = $locale ? '/' . rawurlencode($locale) : '';
             return $prefix . ($path === '/' ? '/' : '/' . ltrim($path, '/')) . ($query !== '' ? '?' . $query : '');
         };
+        $requestPath = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
+        $requestPath = preg_replace('#^/[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?(?=/|$)#', '', $requestPath) ?: '/';
+        $requestPath = trim($requestPath, '/');
 
         if (!empty($GLOBALS['ct_theme_file_homepage']) && is_array($currentThemeFile)) {
             $locales = ct_enabled_locales($pdo);
@@ -524,7 +527,14 @@ if (!function_exists('ct_switcher_html')) {
             }
             return ct_render_switcher_items($items, $title, $style);
         }
-        if (!is_array($current) && (preg_match('#^/\d{4}(?:/\d{2})?/#', (string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) || isset($_GET['s']))) {
+        $listRoutes = array_merge(
+            function_exists('get_posts_list_routes') ? get_posts_list_routes($pdo) : ['artikel'],
+            function_exists('get_pages_list_routes') ? get_pages_list_routes($pdo) : ['halaman']
+        );
+        $isCollection = function_exists('collection_match_route_base')
+            && collection_match_route_base($requestPath, $listRoutes) !== null;
+        $isArchive = preg_match('#^\d{4}(?:/\d{2})?(?:/(?:p|page)/\d+)?$#', $requestPath) === 1;
+        if (!is_array($current) && ($isCollection || $isArchive || isset($_GET['s']))) {
             $items = [['locale' => content_default_locale(), 'url' => $localizedRequestUrl(), 'active' => $currentLocale === content_default_locale()]];
             foreach ($locales as $locale) $items[] = ['locale' => $locale, 'url' => $localizedRequestUrl($locale), 'active' => $currentLocale === $locale];
             return ct_render_switcher_items($items, $title, $style);
