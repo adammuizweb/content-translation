@@ -822,7 +822,18 @@ if (!function_exists('ct_ensure_schema')) {
     }
 
     function ct_base_url(): string {
+        $pdo = $GLOBALS['pdo'] ?? null;
+        if ($pdo instanceof PDO && function_exists('settings_get')) {
+            $configured = trim((string)settings_get($pdo, 'site_url', ''));
+            $parts = $configured !== '' ? parse_url($configured) : false;
+            if (is_array($parts) && in_array(($parts['scheme'] ?? ''), ['http', 'https'], true) && !empty($parts['host'])) {
+                $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
+                $path = isset($parts['path']) ? '/' . trim((string)$parts['path'], '/') : '';
+                return $parts['scheme'] . '://' . $parts['host'] . $port . rtrim($path, '/');
+            }
+        }
         $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
+        $host = preg_replace('/[^a-z0-9.\-:]/i', '', (string)$host) ?: 'localhost';
         $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
         return ($https ? 'https' : 'http') . '://' . $host;
