@@ -6,6 +6,7 @@ declare(strict_types=1);
 $__ct_dir = __DIR__;
 
 require_once $__ct_dir . '/includes/helpers.php';
+require_once $__ct_dir . '/includes/directory-pages.php';
 require_once $__ct_dir . '/includes/frontend.php';
 require_once $__ct_dir . '/includes/admin.php';
 

@@ -475,6 +475,7 @@ if (!function_exists('ct_switcher_html')) {
         $currentCategory = $GLOBALS['ct_current_category'] ?? null;
         $currentAuthor = $GLOBALS['ct_current_author'] ?? null;
         $currentThemeFile = $GLOBALS['ct_current_theme_file'] ?? null;
+        $currentDirectoryPage = function_exists('ct_current_directory_page') ? ct_current_directory_page() : null;
 
         $localizedRequestUrl = static function (?string $locale = null): string {
             $path = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
@@ -486,6 +487,29 @@ if (!function_exists('ct_switcher_html')) {
         $requestPath = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
         $requestPath = preg_replace('#^/[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?(?=/|$)#', '', $requestPath) ?: '/';
         $requestPath = trim($requestPath, '/');
+
+        if (is_array($currentDirectoryPage)) {
+            $locales = ct_enabled_locales($pdo);
+            $currentLocale = $GLOBALS['ct_request_locale'] ?? content_default_locale();
+            $items = [];
+            if (ct_directory_page_route_is_available($pdo, $currentDirectoryPage)) {
+                $items[] = [
+                    'locale' => content_default_locale(),
+                    'url' => ct_directory_page_url($currentDirectoryPage),
+                    'active' => $currentLocale === content_default_locale(),
+                ];
+            }
+            foreach ($locales as $locale) {
+                if (!ct_directory_page_route_is_available($pdo, $currentDirectoryPage, $locale)
+                    || !ct_get_published_directory_page_translation($pdo, $currentDirectoryPage, $locale)) continue;
+                $items[] = [
+                    'locale' => $locale,
+                    'url' => ct_directory_page_url($currentDirectoryPage, $locale),
+                    'active' => $currentLocale === $locale,
+                ];
+            }
+            return ct_render_switcher_items($items, $title, $style);
+        }
 
         if (!empty($GLOBALS['ct_theme_file_homepage']) && is_array($currentThemeFile)) {
             $locales = ct_enabled_locales($pdo);
@@ -679,6 +703,7 @@ add_action('init', function () {
     // public/index.php can serve the default root without invoking router_path.
     $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
     if ($path !== '' || trim((string)($_GET['s'] ?? '')) !== '') return;
+    if (function_exists('ct_current_directory_page') && ct_current_directory_page() !== null) return;
     if (ct_homepage_theme_post($pdo)) return;
     $resource = ct_homepage_theme_file_resource($pdo);
     if (!$resource) return;

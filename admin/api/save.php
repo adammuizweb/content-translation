@@ -86,7 +86,9 @@ try {
             function_exists('ct_enabled_locales') ? ct_enabled_locales($pdo) : [],
             ['author']
         );
-        if (in_array($firstSegment, $reservedRoutes, true) || preg_match('/^\d{4}$/', $firstSegment)) {
+        $directoryCollision = function_exists('ct_find_directory_page')
+            && ct_find_directory_page($pdo, $slug) !== null;
+        if (in_array($firstSegment, $reservedRoutes, true) || preg_match('/^\d{4}$/', $firstSegment) || $directoryCollision) {
             echo json_encode(['error' => __('Slug uses a reserved public route')]);
             return;
         }
