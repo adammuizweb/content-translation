@@ -221,6 +221,17 @@ add_filter('theme_slot_post_data', function ($post, $slotKey, $pdo) {
     return ct_overlay_published_translation($post, $pdo);
 }, 10, 3);
 
+// Page builders may replace theme-post HTML after theme_post_data runs. Restore
+// the reviewed locale HTML after those renderers have completed.
+add_filter('post_content', function ($html, $post) {
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$locale || !$pdo instanceof PDO || !is_array($post) || ($post['type'] ?? '') !== 'theme') return $html;
+    $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), (string)$locale);
+    $content = is_array($translation) ? (string)($translation['content'] ?? '') : '';
+    return trim($content) !== '' ? $content : $html;
+}, 20, 2);
+
 // File-backed theme values are overlaid only when the whole declared resource is published.
 add_filter('theme_mod_value', function ($value, $fieldKey, $themeFolder, $slotKey, $pdo) {
     static $published = [];
