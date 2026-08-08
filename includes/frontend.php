@@ -379,7 +379,15 @@ add_filter('html_dir_attribute', function ($direction) {
 }, 10, 1);
 
 add_filter('document_title', function ($title, $pdo) {
-    if (!$pdo instanceof PDO || empty($GLOBALS['ct_theme_file_homepage'])) return $title;
+    if (!$pdo instanceof PDO) return $title;
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $category = $GLOBALS['ct_current_category'] ?? null;
+    if ($locale && is_array($category)) {
+        $category = ct_overlay_category_translation($category, $pdo, (string)$locale);
+        $name = trim((string)($category['name'] ?? ''));
+        if ($name !== '') return $name . ' — ' . __('Category');
+    }
+    if (empty($GLOBALS['ct_theme_file_homepage'])) return $title;
     $translation = $GLOBALS['ct_current_theme_file_translation'] ?? null;
     return is_array($translation) && trim((string)($translation['seo_title'] ?? '')) !== ''
         ? $translation['seo_title']
@@ -399,6 +407,13 @@ add_filter('canonical_url', function ($url) {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!empty($GLOBALS['ct_theme_file_homepage']) && $pdo instanceof PDO && $locale) {
         return ct_base_url() . ct_homepage_url($locale);
+    }
+
+    $category = $GLOBALS['ct_current_category'] ?? null;
+    if (is_array($category) && $pdo instanceof PDO && $locale) {
+        $context = function_exists('collection_current_route_context') ? collection_current_route_context() : [];
+        $categoryUrl = ct_category_url($pdo, $category, (string)$locale, (int)($context['page'] ?? 1));
+        if ($categoryUrl !== null) return ct_base_url() . $categoryUrl;
     }
 
     $post = $GLOBALS['ct_current_post'] ?? null;
@@ -429,6 +444,24 @@ add_action('jy_head', function () {
             echo '<link rel="alternate" hreflang="' . htmlspecialchars($locale, ENT_QUOTES) . '" href="' . htmlspecialchars($base . ct_homepage_url($locale), ENT_QUOTES) . '">' . "\n";
         }
         echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . '/', ENT_QUOTES) . '">' . "\n";
+        return;
+    }
+
+    $category = $GLOBALS['ct_current_category'] ?? null;
+    if (is_array($category)) {
+        $context = function_exists('collection_current_route_context') ? collection_current_route_context() : [];
+        $page = (int)($context['page'] ?? 1);
+        $query = (string)($context['query'] ?? '');
+        $base = ct_base_url();
+        $defaultUrl = ct_category_url($pdo, $category, null, $page, $query);
+        if ($defaultUrl === null) return;
+        echo '<link rel="alternate" hreflang="' . htmlspecialchars(content_default_locale(), ENT_QUOTES) . '" href="' . htmlspecialchars($base . $defaultUrl, ENT_QUOTES) . '">' . "\n";
+        foreach (ct_enabled_locales($pdo) as $locale) {
+            $url = ct_category_url($pdo, $category, $locale, $page, $query);
+            if ($url === null) continue;
+            echo '<link rel="alternate" hreflang="' . htmlspecialchars($locale, ENT_QUOTES) . '" href="' . htmlspecialchars($base . $url, ENT_QUOTES) . '">' . "\n";
+        }
+        echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . $defaultUrl, ENT_QUOTES) . '">' . "\n";
         return;
     }
 
