@@ -351,6 +351,21 @@ add_filter('content_permalink', function ($url, $post, $type) {
     return ct_post_url((string)($translation['slug'] ?? '') ?: (string)($post['slug'] ?? ''), $locale);
 }, 10, 3);
 
+// Preserve historical source URLs after the default content moves to English.
+add_filter('unresolved_content_redirect_url', function ($url, $path, $pdo) {
+    if ($url !== '' || !$pdo instanceof PDO || !empty($GLOBALS['ct_request_locale'])) return $url;
+    $slug = trim((string)$path, '/');
+    if ($slug === '') return $url;
+
+    $stmt = $pdo->prepare("SELECT pt.slug FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.slug = ? AND pt.slug <> p.slug AND pt.status = 'published' AND p.status = 'published' AND p.is_deleted = 0 AND NOT EXISTS (SELECT 1 FROM posts live WHERE live.slug = ? AND live.status = 'published' AND live.is_deleted = 0) LIMIT 1");
+    foreach (ct_enabled_locales($pdo) as $locale) {
+        $stmt->execute([$locale, $slug, $slug]);
+        $translatedSlug = $stmt->fetchColumn();
+        if (is_string($translatedSlug) && $translatedSlug !== '') return ct_post_url($translatedSlug, $locale);
+    }
+    return $url;
+}, 10, 3);
+
 // ─── Localized document metadata ───
 add_filter('html_lang_attribute', function ($lang) {
     return $GLOBALS['ct_request_locale'] ?? $lang;
