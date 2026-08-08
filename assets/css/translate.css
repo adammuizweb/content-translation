@@ -176,6 +176,17 @@
   font: inherit;
   box-sizing: border-box;
 }
+.ct-field-select {
+  min-width: 180px;
+  padding: .5rem .7rem;
+  border: 1px solid rgba(127,127,127,.35);
+  border-radius: 6px;
+  background: var(--adam-card, transparent);
+  color: inherit;
+  font: inherit;
+}
+.ct-source-value { margin-top: .4rem; padding: .45rem .6rem; border-left: 2px solid rgba(127,127,127,.3); color: var(--adam-muted, inherit); font-size: .84rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ct-delete-form { margin-top: 1rem; }
 
 .ct-readonly {
   padding: .5rem .7rem;

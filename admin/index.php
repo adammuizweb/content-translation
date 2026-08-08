@@ -15,6 +15,7 @@ ct_ensure_schema($pdo);
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $selfUrl = $base . '/?page=admin/tools/content-translation';
 $editUrl = $base . '/?page=admin/tools/content-translation/edit';
+$themeFileEditUrl = $base . '/?page=admin/tools/content-translation/theme-file-edit';
 $settingsUrl = $base . '/?page=admin/tools/content-translation/settings';
 $route = trim((string)($_GET['page'] ?? ''), '/');
 $section = substr($route, strrpos($route, '/') + 1);
@@ -34,14 +35,64 @@ if ($section === 'content-translation'):
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/posts') ?>"><i>01</i><strong><?= __('Posts') ?></strong><span><?= __('Translate article title, slug, content, and SEO description.') ?></span><b><?= __('Manage posts') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/pages') ?>"><i>02</i><strong><?= __('Pages') ?></strong><span><?= __('Translate standalone pages with the same reviewed workflow.') ?></span><b><?= __('Manage pages') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/themes') ?>"><i>03</i><strong><?= __('Theme Partials') ?></strong><span><?= __('Translate database-backed theme content and its metadata.') ?></span><b><?= __('Manage theme partials') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>04</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/menus/index') ?>"><i>05</i><strong><?= __('Menus') ?></strong><span><?= __('Translate navigation labels and manual URLs from the menu editor.') ?></span><b><?= __('Open menus') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/sidebar/index') ?>"><i>06</i><strong><?= __('Sidebar') ?></strong><span><?= __('Translate widget titles and supported widget text in each sidebar zone.') ?></span><b><?= __('Open sidebar') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/settings/site') ?>"><i>07</i><strong><?= __('Site Identity') ?></strong><span><?= __('Set localized site title and description for homepage and metadata.') ?></span><b><?= __('Open site settings') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/profile/index') ?>"><i>08</i><strong><?= __('Author Profiles') ?></strong><span><?= __('Translate the author bio from each user profile.') ?></span><b><?= __('Open profiles') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($settingsUrl) ?>"><i>09</i><strong><?= __('Languages & Sitemap') ?></strong><span><?= __('Enable locales, choose sitemap languages, and download a backup.') ?></span><b><?= __('Open settings') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-files') ?>"><i>04</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>05</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/menus/index') ?>"><i>06</i><strong><?= __('Menus') ?></strong><span><?= __('Translate navigation labels and manual URLs from the menu editor.') ?></span><b><?= __('Open menus') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/sidebar/index') ?>"><i>07</i><strong><?= __('Sidebar') ?></strong><span><?= __('Translate widget titles and supported widget text in each sidebar zone.') ?></span><b><?= __('Open sidebar') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/settings/site') ?>"><i>08</i><strong><?= __('Site Identity') ?></strong><span><?= __('Set localized site title and description for homepage and metadata.') ?></span><b><?= __('Open site settings') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/profile/index') ?>"><i>09</i><strong><?= __('Author Profiles') ?></strong><span><?= __('Translate the author bio from each user profile.') ?></span><b><?= __('Open profiles') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($settingsUrl) ?>"><i>10</i><strong><?= __('Languages & Sitemap') ?></strong><span><?= __('Enable locales, choose sitemap languages, and download a backup.') ?></span><b><?= __('Open settings') ?> →</b></a>
   </section>
   <aside class="ct-hub-tip"><strong><?= __('How it works') ?></strong><span><?= __('Default-language content stays unchanged. A locale URL and sitemap entry appear only after a reviewed translation is published.') ?></span></aside>
+</div>
+<?php return; endif;
+
+if ($section === 'theme-files'):
+    $resources = ct_theme_file_resources($pdo);
+    $homepageResource = ct_homepage_theme_file_resource($pdo);
+    if ($homepageResource && !isset($resources[$homepageResource['id']])) {
+        $resources += ct_theme_file_resources($pdo, (string)$homepageResource['theme_folder']);
+    }
+    $statuses = ct_theme_file_translation_statuses($pdo, $resources);
+?>
+<div class="ct-admin">
+  <div class="ct-header">
+    <div>
+      <h2><?= __('Theme Files') ?></h2>
+      <p class="muted"><?= __('File-backed resources declared by the active theme and the theme assigned to the homepage. A published locale must contain every declared translatable field.') ?></p>
+    </div>
+    <a class="btn" href="<?= h($selfUrl) ?>"><?= __('Back') ?></a>
+  </div>
+  <?php if (!empty($_GET['flash'])): ?><div class="ct-flash"><?= h((string)$_GET['flash']) ?></div><?php endif; ?>
+  <?php if (empty($locales)): ?>
+    <div class="ct-flash ct-flash-warning"><?= __('No translation locales enabled.') ?> <a href="<?= h($settingsUrl) ?>"><?= __('Configure locales') ?></a></div>
+  <?php endif; ?>
+  <table class="ct-table">
+    <thead><tr><th><?= __('Resource') ?></th><th><?= __('Slot') ?></th><th><?= __('Fields') ?></th><th class="ct-translations-col"><?= __('Translations') ?></th></tr></thead>
+    <tbody>
+      <?php if (empty($resources)): ?>
+        <tr><td colspan="4" class="muted"><?= __('The active theme does not declare any file-backed translatable resources.') ?></td></tr>
+      <?php endif; ?>
+      <?php foreach ($resources as $resource): ?>
+        <tr>
+          <td><strong><?= h((string)$resource['label']) ?></strong><br><small class="muted"><?= h((string)$resource['theme_folder']) ?></small></td>
+          <td><code><?= h((string)$resource['slot_key']) ?></code></td>
+          <td><?= h(implode(', ', array_map(fn(array $field): string => (string)$field['label'], $resource['fields']))) ?></td>
+          <td class="ct-translations-col">
+            <select class="ct-translation-select" aria-label="<?= h(__('Translations')) ?>" onchange="if(this.value) window.location.href=this.value">
+              <option value=""><?= __('Choose language…') ?></option>
+              <?php foreach ($locales as $locale): ?>
+                <?php $status = $statuses[$resource['id']][$locale] ?? null; ?>
+                <?php $label = strtoupper($locale) . ' — ' . ($status === 'draft' ? __('Draft') : ($status === 'published' ? __('Published') : ($status === 'incomplete' ? __('Incomplete') : __('Add')))); ?>
+                <?php $url = $themeFileEditUrl . '&theme_folder=' . urlencode((string)$resource['theme_folder']) . '&slot_key=' . urlencode((string)$resource['slot_key']) . '&locale=' . urlencode($locale); ?>
+                <option value="<?= h($url) ?>"><?= h($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
 </div>
 <?php return; endif;
 

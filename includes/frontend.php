@@ -26,12 +26,26 @@ add_filter('router_path', function ($path) {
             return '';
         }
         $homepage = ct_homepage_theme_post($pdo);
-        if (!$homepage || !ct_get_published_translation($pdo, (int)$homepage['id'], $first)) ct_render_not_found();
+        if ($homepage) {
+            if (!ct_get_published_translation($pdo, (int)$homepage['id'], $first)) ct_render_not_found();
+            if (function_exists('set_locale')) set_locale($first);
+            $GLOBALS['ct_request_locale'] = $first;
+            $GLOBALS['ct_current_post'] = $homepage;
+            $GLOBALS['ct_localized_homepage'] = true;
+            return '';
+        }
+
+        $resource = ct_homepage_theme_file_resource($pdo);
+        $translation = $resource
+            ? ct_get_published_theme_file_translation($pdo, (string)$resource['theme_folder'], (string)$resource['slot_key'], $first)
+            : null;
+        if (!$resource || !$translation) ct_render_not_found();
 
         if (function_exists('set_locale')) set_locale($first);
         $GLOBALS['ct_request_locale'] = $first;
-        $GLOBALS['ct_current_post'] = $homepage;
-        $GLOBALS['ct_localized_homepage'] = true;
+        $GLOBALS['ct_current_theme_file'] = $resource;
+        $GLOBALS['ct_current_theme_file_translation'] = $translation;
+        $GLOBALS['ct_theme_file_homepage'] = true;
         return '';
     }
 
@@ -207,13 +221,35 @@ add_filter('theme_slot_post_data', function ($post, $slotKey, $pdo) {
     return ct_overlay_published_translation($post, $pdo);
 }, 10, 3);
 
+// File-backed theme values are overlaid only when the whole declared resource is published.
+add_filter('theme_mod_value', function ($value, $fieldKey, $themeFolder, $slotKey, $pdo) {
+    static $published = [];
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    if (!$locale || !$pdo instanceof PDO || !is_string($slotKey) || $slotKey === '') return $value;
+    $cacheKey = (string)$themeFolder . "\0" . $slotKey . "\0" . (string)$locale;
+    if (!array_key_exists($cacheKey, $published)) {
+        $published[$cacheKey] = ct_get_published_theme_file_translation($pdo, (string)$themeFolder, $slotKey, (string)$locale);
+    }
+    $translation = $published[$cacheKey];
+    if (!$translation || !array_key_exists((string)$fieldKey, $translation['values'])) return $value;
+    return $translation['values'][(string)$fieldKey];
+}, 10, 5);
+
 // ─── Localized category collections ───
 add_filter('collection_query_clauses', function ($clauses, $context) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     $scope = $context['scope'] ?? '';
     if (!$locale || !in_array($scope, ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts'], true)) return $clauses;
     $alias = in_array($context['table_alias'] ?? '', ['p', 'posts'], true) ? $context['table_alias'] : 'posts';
-    $clauses['where'][] = "EXISTS (SELECT 1 FROM post_translations ct_post_translation WHERE ct_post_translation.post_id = {$alias}.id AND ct_post_translation.locale = :ct_collection_locale AND ct_post_translation.status = 'published')";
+    $requiredFields = array_values(array_intersect(
+        ['title', 'slug', 'content'],
+        is_array($context['required_translation_fields'] ?? null) ? $context['required_translation_fields'] : []
+    ));
+    $requiredSql = '';
+    foreach ($requiredFields as $field) {
+        $requiredSql .= " AND TRIM(COALESCE(ct_post_translation.{$field}, '')) <> ''";
+    }
+    $clauses['where'][] = "EXISTS (SELECT 1 FROM post_translations ct_post_translation WHERE ct_post_translation.post_id = {$alias}.id AND ct_post_translation.locale = :ct_collection_locale AND ct_post_translation.status = 'published'{$requiredSql})";
     $clauses['params'][':ct_collection_locale'] = $locale;
     return $clauses;
 }, 10, 2);
@@ -327,10 +363,30 @@ add_filter('html_dir_attribute', function ($direction) {
     return ct_locale_direction($pdo, (string)$locale);
 }, 10, 1);
 
+add_filter('document_title', function ($title, $pdo) {
+    if (!$pdo instanceof PDO || empty($GLOBALS['ct_theme_file_homepage'])) return $title;
+    $translation = $GLOBALS['ct_current_theme_file_translation'] ?? null;
+    return is_array($translation) && trim((string)($translation['seo_title'] ?? '')) !== ''
+        ? $translation['seo_title']
+        : $title;
+}, 10, 2);
+
+add_filter('document_meta_description', function ($description, $post, $pdo) {
+    if (!$pdo instanceof PDO || empty($GLOBALS['ct_theme_file_homepage'])) return $description;
+    $translation = $GLOBALS['ct_current_theme_file_translation'] ?? null;
+    return is_array($translation) && trim((string)($translation['meta_description'] ?? '')) !== ''
+        ? $translation['meta_description']
+        : $description;
+}, 10, 3);
+
 add_filter('canonical_url', function ($url) {
-    $post = $GLOBALS['ct_current_post'] ?? null;
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     $pdo = $GLOBALS['pdo'] ?? null;
+    if (!empty($GLOBALS['ct_theme_file_homepage']) && $pdo instanceof PDO && $locale) {
+        return ct_base_url() . ct_homepage_url($locale);
+    }
+
+    $post = $GLOBALS['ct_current_post'] ?? null;
     if (!is_array($post) || !$pdo instanceof PDO || !$locale) return $url;
 
     if (!empty($GLOBALS['ct_localized_homepage'])) {
@@ -346,9 +402,23 @@ add_filter('canonical_url', function ($url) {
 
 // ─── hreflang alternate links in <head> ───
 add_action('jy_head', function () {
-    $post = $GLOBALS['ct_current_post'] ?? null;
     $pdo = $GLOBALS['pdo'] ?? null;
-    if (!is_array($post) || !$pdo instanceof PDO) return;
+    if (!$pdo instanceof PDO) return;
+
+    $resource = $GLOBALS['ct_current_theme_file'] ?? null;
+    if (!empty($GLOBALS['ct_theme_file_homepage']) && is_array($resource)) {
+        $base = ct_base_url();
+        echo '<link rel="alternate" hreflang="' . htmlspecialchars(content_default_locale(), ENT_QUOTES) . '" href="' . htmlspecialchars($base . '/', ENT_QUOTES) . '">' . "\n";
+        foreach (ct_enabled_locales($pdo) as $locale) {
+            if (!ct_get_published_theme_file_translation($pdo, (string)$resource['theme_folder'], (string)$resource['slot_key'], $locale)) continue;
+            echo '<link rel="alternate" hreflang="' . htmlspecialchars($locale, ENT_QUOTES) . '" href="' . htmlspecialchars($base . ct_homepage_url($locale), ENT_QUOTES) . '">' . "\n";
+        }
+        echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . '/', ENT_QUOTES) . '">' . "\n";
+        return;
+    }
+
+    $post = $GLOBALS['ct_current_post'] ?? null;
+    if (!is_array($post)) return;
 
     $id = (int)($post['id'] ?? 0);
     $slug = (string)($post['slug'] ?? '');
@@ -389,6 +459,7 @@ if (!function_exists('ct_switcher_html')) {
         $current = $GLOBALS['ct_current_post'] ?? null;
         $currentCategory = $GLOBALS['ct_current_category'] ?? null;
         $currentAuthor = $GLOBALS['ct_current_author'] ?? null;
+        $currentThemeFile = $GLOBALS['ct_current_theme_file'] ?? null;
 
         $localizedRequestUrl = static function (?string $locale = null): string {
             $path = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
@@ -397,6 +468,17 @@ if (!function_exists('ct_switcher_html')) {
             $prefix = $locale ? '/' . rawurlencode($locale) : '';
             return $prefix . ($path === '/' ? '/' : '/' . ltrim($path, '/')) . ($query !== '' ? '?' . $query : '');
         };
+
+        if (!empty($GLOBALS['ct_theme_file_homepage']) && is_array($currentThemeFile)) {
+            $locales = ct_enabled_locales($pdo);
+            $currentLocale = $GLOBALS['ct_request_locale'] ?? content_default_locale();
+            $items = [['locale' => content_default_locale(), 'url' => '/', 'active' => $currentLocale === content_default_locale()]];
+            foreach ($locales as $locale) {
+                if (!ct_get_published_theme_file_translation($pdo, (string)$currentThemeFile['theme_folder'], (string)$currentThemeFile['slot_key'], $locale)) continue;
+                $items[] = ['locale' => $locale, 'url' => ct_homepage_url($locale), 'active' => $currentLocale === $locale];
+            }
+            return ct_render_switcher_items($items, $title, $style);
+        }
 
         $requestContent = ct_current_content_from_request($pdo);
         if (is_array($requestContent)) {
@@ -476,7 +558,9 @@ if (!function_exists('ct_render_switcher_items')) {
         if (count($items) < 2) return '';
 
         if ($style === 'select') {
-            $out = '<select class="ct-lang-select" onchange="if(this.value)window.location.href=this.value">';
+            $label = function_exists('__') ? __('Language') : 'Language';
+            $out = $title !== '' ? '<h3 class="widget-title">' . htmlspecialchars($title, ENT_QUOTES) . '</h3>' : '';
+            $out .= '<select class="ct-lang-select" aria-label="' . htmlspecialchars($label, ENT_QUOTES) . '" onchange="if(this.value)window.location.href=this.value">';
             foreach ($items as $item) {
                 $sel = $item['active'] ? ' selected' : '';
                 $out .= '<option value="' . htmlspecialchars($item['url'], ENT_QUOTES) . '"' . $sel . '>'
@@ -551,7 +635,7 @@ add_filter('render_sidebar_widget', function ($html, $type, $config, $pdo) {
     if (!$pdo instanceof PDO) return '';
 
     $title = (string)($config['title'] ?? __('Languages'));
-    $html = ct_switcher_html($pdo, $title);
+    $html = ct_switcher_html($pdo, $title, 'select');
     return $html === '' ? '' : '<div class="widget widget-lang-switcher">' . $html . '</div>';
 }, 10, 4);
 
@@ -566,4 +650,13 @@ add_action('init', function () {
     } catch (Throwable $e) {
         // Theme zones may not be installed on a minimal Core installation.
     }
+
+    // public/index.php can serve the default root without invoking router_path.
+    $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
+    if ($path !== '' || trim((string)($_GET['s'] ?? '')) !== '') return;
+    if (ct_homepage_theme_post($pdo)) return;
+    $resource = ct_homepage_theme_file_resource($pdo);
+    if (!$resource) return;
+    $GLOBALS['ct_current_theme_file'] = $resource;
+    $GLOBALS['ct_theme_file_homepage'] = true;
 });

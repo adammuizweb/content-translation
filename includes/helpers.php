@@ -13,7 +13,7 @@ if (!function_exists('ct_ensure_schema')) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS post_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 post_id INT UNSIGNED NOT NULL,
-                locale VARCHAR(10) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
                 title VARCHAR(255) NOT NULL DEFAULT '',
                 slug VARCHAR(255) NOT NULL DEFAULT '',
                 content MEDIUMTEXT NULL,
@@ -27,7 +27,7 @@ if (!function_exists('ct_ensure_schema')) {
             ct_add_column_if_missing($pdo, 'post_translations', 'meta_description', "VARCHAR(320) NOT NULL DEFAULT ''");
             $pdo->exec("CREATE TABLE IF NOT EXISTS site_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                locale VARCHAR(10) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
                 title VARCHAR(255) NOT NULL DEFAULT '',
                 description TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -37,7 +37,7 @@ if (!function_exists('ct_ensure_schema')) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS category_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 category_id INT UNSIGNED NOT NULL,
-                locale VARCHAR(10) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
                 name VARCHAR(255) NOT NULL DEFAULT '',
                 slug VARCHAR(255) NOT NULL DEFAULT '',
                 description TEXT NULL,
@@ -50,7 +50,7 @@ if (!function_exists('ct_ensure_schema')) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS menu_item_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 menu_item_id INT UNSIGNED NOT NULL,
-                locale VARCHAR(10) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
                 label VARCHAR(255) NOT NULL DEFAULT '',
                 url VARCHAR(2048) NOT NULL DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -60,7 +60,7 @@ if (!function_exists('ct_ensure_schema')) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS sidebar_item_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 sidebar_item_id INT UNSIGNED NOT NULL,
-                locale VARCHAR(10) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
                 title VARCHAR(255) NOT NULL DEFAULT '',
                 config MEDIUMTEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -70,12 +70,36 @@ if (!function_exists('ct_ensure_schema')) {
             $pdo->exec("CREATE TABLE IF NOT EXISTS author_profile_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 user_id INT UNSIGNED NOT NULL,
-                locale VARCHAR(10) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
                 bio TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_author_profile_locale (user_id, locale)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS theme_file_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                theme_folder VARCHAR(100) NOT NULL,
+                slot_key VARCHAR(150) NOT NULL,
+                locale VARCHAR(16) NOT NULL,
+                values_json MEDIUMTEXT NOT NULL,
+                seo_title VARCHAR(255) NOT NULL DEFAULT '',
+                meta_description VARCHAR(320) NOT NULL DEFAULT '',
+                status ENUM('draft','published') NOT NULL DEFAULT 'draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_theme_file_locale (theme_folder, slot_key, locale)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            foreach ([
+                'post_translations',
+                'site_translations',
+                'category_translations',
+                'menu_item_translations',
+                'sidebar_item_translations',
+                'author_profile_translations',
+                'theme_file_translations',
+            ] as $table) {
+                ct_expand_locale_column($pdo, $table);
+            }
         } catch (Throwable $e) {
             error_log('[content-translation] schema error: ' . $e->getMessage());
         }
@@ -86,6 +110,16 @@ if (!function_exists('ct_ensure_schema')) {
         $stmt->execute([$table, $column]);
         if ((int)$stmt->fetchColumn() === 0) {
             $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+        }
+    }
+
+    function ct_expand_locale_column(PDO $pdo, string $table): void {
+        if (!preg_match('/^[a-z0-9_]+$/', $table)) throw new InvalidArgumentException('Invalid translation table.');
+        $stmt = $pdo->prepare('SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+        $stmt->execute([$table, 'locale']);
+        $length = (int)$stmt->fetchColumn();
+        if ($length > 0 && $length < 16) {
+            $pdo->exec("ALTER TABLE `{$table}` MODIFY COLUMN `locale` VARCHAR(16) NOT NULL");
         }
     }
 
@@ -191,6 +225,7 @@ if (!function_exists('ct_ensure_schema')) {
             'sidebar_item_translations' => 'SELECT * FROM sidebar_item_translations ORDER BY sidebar_item_id, locale',
             'author_profile_translations' => 'SELECT apt.*, u.email AS source_email FROM author_profile_translations apt INNER JOIN users u ON u.id = apt.user_id ORDER BY apt.user_id, apt.locale',
             'site_translations' => 'SELECT * FROM site_translations ORDER BY locale',
+            'theme_file_translations' => 'SELECT * FROM theme_file_translations ORDER BY theme_folder, slot_key, locale',
         ];
         $translations = [];
         foreach ($tables as $name => $sql) {
@@ -199,7 +234,7 @@ if (!function_exists('ct_ensure_schema')) {
 
         return [
             'format' => 'jyavani-content-translation-export',
-            'version' => 1,
+            'version' => 2,
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),
@@ -359,6 +394,253 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
+    function ct_theme_file_resource_id(string $themeFolder, string $slotKey): string {
+        return $themeFolder . ':' . $slotKey;
+    }
+
+    /**
+     * Discover translatable file resources declared by the active theme.
+     * Sections that target the same slot form one atomic translation resource.
+     */
+    function ct_theme_file_resources(PDO $pdo, ?string $themeFolder = null): array {
+        if (!function_exists('get_active_theme_folder') || !function_exists('theme_customizer_fields')) return [];
+
+        $folder = trim((string)($themeFolder ?? get_active_theme_folder($pdo)));
+        if ($folder === '' || strlen($folder) > 100) return [];
+
+        $resources = [];
+        foreach (theme_customizer_fields($folder) as $sectionKey => $section) {
+            if (!is_array($section)) continue;
+            $slotKey = trim((string)($section['slot'] ?? ''));
+            if ($slotKey === '' || strlen($slotKey) > 150) continue;
+
+            $translatable = [];
+            foreach ((array)($section['fields'] ?? []) as $fieldKey => $field) {
+                if (!is_array($field) || ($field['translatable'] ?? false) !== true) continue;
+                $fieldKey = (string)($field['key'] ?? $fieldKey);
+                $fieldType = (string)($field['type'] ?? 'text');
+                if (!preg_match('/^[A-Za-z0-9_-]+$/', $fieldKey) || ctype_digit($fieldKey) || !in_array($fieldType, ['text', 'textarea'], true)) continue;
+                $translatable[$fieldKey] = [
+                    'key' => $fieldKey,
+                    'type' => $fieldType,
+                    'label' => (string)($field['label'] ?? ucfirst(str_replace(['_', '-'], ' ', $fieldKey))),
+                    'format' => ($field['format'] ?? '') === 'json' ? 'json' : '',
+                ];
+            }
+            if ($translatable === []) continue;
+
+            $id = ct_theme_file_resource_id($folder, $slotKey);
+            if (!isset($resources[$id])) {
+                $resources[$id] = [
+                    'id' => $id,
+                    'theme_folder' => $folder,
+                    'slot_key' => $slotKey,
+                    'label' => '',
+                    'section_labels' => [],
+                    'fields' => [],
+                ];
+            }
+            $sectionLabel = trim((string)($section['label'] ?? ucfirst(str_replace(['_', '-'], ' ', (string)$sectionKey))));
+            if ($sectionLabel !== '' && !in_array($sectionLabel, $resources[$id]['section_labels'], true)) {
+                $resources[$id]['section_labels'][] = $sectionLabel;
+            }
+            foreach ($translatable as $fieldKey => $field) {
+                if (!isset($resources[$id]['fields'][$fieldKey])) $resources[$id]['fields'][$fieldKey] = $field;
+            }
+        }
+
+        foreach ($resources as &$resource) {
+            $sectionLabel = implode(' + ', $resource['section_labels']);
+            $resource['label'] = $sectionLabel !== ''
+                ? $sectionLabel . ' (' . $resource['slot_key'] . ')'
+                : $resource['slot_key'];
+        }
+        unset($resource);
+        return $resources;
+    }
+
+    function ct_theme_file_resource(PDO $pdo, string $themeFolder, string $slotKey): ?array {
+        $id = ct_theme_file_resource_id($themeFolder, $slotKey);
+        $resources = ct_theme_file_resources($pdo, $themeFolder);
+        return $resources[$id] ?? null;
+    }
+
+    function ct_homepage_theme_file_resource(PDO $pdo): ?array {
+        if (!function_exists('resolve_template')) return null;
+        try {
+            $resolved = resolve_template($pdo, 'main.homepage');
+        } catch (Throwable $e) {
+            error_log('[content-translation] homepage theme file resolution error: ' . $e->getMessage());
+            return null;
+        }
+        if (($resolved['type'] ?? '') !== 'theme_file') return null;
+        $folder = (string)($resolved['theme_folder'] ?? $resolved['folder'] ?? '');
+        return ct_theme_file_resource($pdo, $folder, 'main.homepage');
+    }
+
+    function ct_theme_file_decode_values(string $json): ?array {
+        try {
+            $values = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+            if (!is_array($values)) return null;
+            foreach ($values as $key => $value) {
+                if (!is_string($key) || (!is_scalar($value) && $value !== null)) return null;
+            }
+            return $values;
+        } catch (JsonException $e) {
+            return null;
+        }
+    }
+
+    function ct_get_theme_file_translation(PDO $pdo, string $themeFolder, string $slotKey, string $locale): ?array {
+        ct_ensure_schema($pdo);
+        try {
+            $stmt = $pdo->prepare('SELECT * FROM theme_file_translations WHERE theme_folder = ? AND slot_key = ? AND locale = ? LIMIT 1');
+            $stmt->execute([$themeFolder, $slotKey, $locale]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) return null;
+            $values = ct_theme_file_decode_values((string)$row['values_json']);
+            $row['values'] = $values ?? [];
+            $row['values_valid'] = $values !== null;
+            return $row;
+        } catch (Throwable $e) {
+            error_log('[content-translation] theme file get error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    function ct_theme_file_translation_is_complete(array $translation, array $resource): bool {
+        if (($translation['values_valid'] ?? true) !== true) return false;
+        $values = $translation['values'] ?? null;
+        if (!is_array($values)) return false;
+        foreach ($values as $fieldKey => $value) {
+            if (!is_string($fieldKey) || !isset($resource['fields'][$fieldKey]) || !is_scalar($value)) return false;
+        }
+        foreach ($resource['fields'] as $fieldKey => $_field) {
+            if (!array_key_exists($fieldKey, $values) || !is_scalar($values[$fieldKey])) return false;
+            if (trim((string)$values[$fieldKey]) === '') return false;
+            if (($_field['format'] ?? '') === 'json') {
+                try {
+                    $decoded = json_decode((string)$values[$fieldKey], true, 512, JSON_THROW_ON_ERROR);
+                } catch (JsonException $e) {
+                    return false;
+                }
+                if (!is_array($decoded) || !array_is_list($decoded)) return false;
+            }
+        }
+        return true;
+    }
+
+    function ct_get_published_theme_file_translation(PDO $pdo, string $themeFolder, string $slotKey, string $locale): ?array {
+        $resource = ct_theme_file_resource($pdo, $themeFolder, $slotKey);
+        if (!$resource) return null;
+        $translation = ct_get_theme_file_translation($pdo, $themeFolder, $slotKey, $locale);
+        if (!$translation || ($translation['status'] ?? '') !== 'published') return null;
+        return ct_theme_file_translation_is_complete($translation, $resource) ? $translation : null;
+    }
+
+    function ct_theme_file_translation_status(PDO $pdo, string $themeFolder, string $slotKey, string $locale): ?string {
+        $translation = ct_get_theme_file_translation($pdo, $themeFolder, $slotKey, $locale);
+        $status = $translation['status'] ?? null;
+        return in_array($status, ['draft', 'published'], true) ? $status : null;
+    }
+
+    function ct_save_theme_file_translation(PDO $pdo, string $themeFolder, string $slotKey, string $locale, array $data): bool {
+        if (!in_array($locale, ct_enabled_locales($pdo), true)) {
+            throw new InvalidArgumentException('Locale not enabled.');
+        }
+        $resource = ct_theme_file_resource($pdo, $themeFolder, $slotKey);
+        if (!$resource) throw new InvalidArgumentException('Theme file resource is not declared by the active theme.');
+
+        $status = (string)($data['status'] ?? '');
+        if (!in_array($status, ['draft', 'published'], true)) throw new InvalidArgumentException('Invalid translation status.');
+
+        $seoTitle = trim((string)($data['seo_title'] ?? ''));
+        $metaDescription = trim((string)($data['meta_description'] ?? ''));
+        $length = static fn(string $value): int => function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+        if ($length($seoTitle) > 255) throw new InvalidArgumentException('SEO title must not exceed 255 characters.');
+        if ($length($metaDescription) > 320) throw new InvalidArgumentException('Meta description must not exceed 320 characters.');
+
+        $input = $data['values'] ?? ($data['values_json'] ?? []);
+        if (is_string($input)) {
+            try {
+                $input = json_decode($input, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $e) {
+                throw new InvalidArgumentException('Translation values contain invalid JSON.');
+            }
+        }
+        if (!is_array($input)) throw new InvalidArgumentException('Translation values must be an object.');
+
+        foreach ($input as $fieldKey => $value) {
+            if (!is_string($fieldKey) || !isset($resource['fields'][$fieldKey])) {
+                throw new InvalidArgumentException('Translation contains an unknown theme field.');
+            }
+            if (!is_scalar($value)) throw new InvalidArgumentException('Theme field translations must be scalar values.');
+        }
+
+        $values = [];
+        foreach ($resource['fields'] as $fieldKey => $_field) {
+            $value = $input[$fieldKey] ?? '';
+            if (!is_scalar($value)) throw new InvalidArgumentException('Theme field translations must be scalar values.');
+            $values[$fieldKey] = (string)$value;
+        }
+        $candidate = ['values' => $values, 'values_valid' => true];
+        if ($status === 'published' && !ct_theme_file_translation_is_complete($candidate, $resource)) {
+            throw new InvalidArgumentException('Every translatable theme field must be completed before publishing.');
+        }
+
+        try {
+            $valuesJson = json_encode($values, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            throw new InvalidArgumentException('Translation values could not be encoded as JSON.');
+        }
+
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare("INSERT INTO theme_file_translations (theme_folder, slot_key, locale, values_json, seo_title, meta_description, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE values_json = VALUES(values_json), seo_title = VALUES(seo_title), meta_description = VALUES(meta_description), status = VALUES(status)");
+        return $stmt->execute([$themeFolder, $slotKey, $locale, $valuesJson, $seoTitle, $metaDescription, $status]);
+    }
+
+    function ct_delete_theme_file_translation(PDO $pdo, string $themeFolder, string $slotKey, string $locale): bool {
+        if (!in_array($locale, ct_enabled_locales($pdo), true)) throw new InvalidArgumentException('Locale not enabled.');
+        if (!ct_theme_file_resource($pdo, $themeFolder, $slotKey)) {
+            throw new InvalidArgumentException('Theme file resource is not declared by the active theme.');
+        }
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('DELETE FROM theme_file_translations WHERE theme_folder = ? AND slot_key = ? AND locale = ?');
+        return $stmt->execute([$themeFolder, $slotKey, $locale]);
+    }
+
+    function ct_theme_file_translation_statuses(PDO $pdo, array $resources): array {
+        if ($resources === []) return [];
+        ct_ensure_schema($pdo);
+        $out = [];
+        foreach ($resources as $resource) {
+            $stmt = $pdo->prepare('SELECT locale, status, values_json FROM theme_file_translations WHERE theme_folder = ? AND slot_key = ?');
+            $stmt->execute([(string)$resource['theme_folder'], (string)$resource['slot_key']]);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $status = (string)$row['status'];
+                if ($status === 'published') {
+                    $values = ct_theme_file_decode_values((string)$row['values_json']);
+                    if ($values === null || !ct_theme_file_translation_is_complete(['values' => $values, 'values_valid' => true], $resource)) {
+                        $status = 'incomplete';
+                    }
+                }
+                $out[(string)$resource['id']][(string)$row['locale']] = $status;
+            }
+        }
+        return $out;
+    }
+
+    function ct_theme_file_source_values(PDO $pdo, array $resource): array {
+        $mods = function_exists('theme_mods_all') ? theme_mods_all($pdo, (string)$resource['theme_folder']) : [];
+        $values = [];
+        foreach ($resource['fields'] as $fieldKey => $_field) {
+            $values[$fieldKey] = array_key_exists($fieldKey, $mods) ? $mods[$fieldKey] : '';
+        }
+        return $values;
+    }
+
     function ct_current_content_from_request(PDO $pdo): ?array {
         $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
         if ($path === '') return null;
@@ -459,12 +741,14 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_category_source_path(PDO $pdo, array $category): string {
         $parts = [];
         $current = $category;
+        $visited = [];
         if (!array_key_exists('parent_id', $current) && !empty($current['id'])) {
             $stmt = $pdo->prepare('SELECT id, parent_id, slug FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
             $stmt->execute([(int)$current['id']]);
             $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
         }
-        while (!empty($current['id'])) {
+        while (!empty($current['id']) && !in_array((int)$current['id'], $visited, true)) {
+            $visited[] = (int)$current['id'];
             array_unshift($parts, (string)$current['slug']);
             $parentId = (int)($current['parent_id'] ?? 0);
             if ($parentId <= 0) break;
@@ -478,12 +762,14 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_category_translation_path(PDO $pdo, array $category, string $locale): ?string {
         $parts = [];
         $current = $category;
+        $visited = [];
         if (!array_key_exists('parent_id', $current) && !empty($current['id'])) {
             $stmt = $pdo->prepare('SELECT id, parent_id, slug FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
             $stmt->execute([(int)$current['id']]);
             $current = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
         }
-        while (!empty($current['id'])) {
+        while (!empty($current['id']) && !in_array((int)$current['id'], $visited, true)) {
+            $visited[] = (int)$current['id'];
             $translation = ct_get_published_category_translation($pdo, (int)$current['id'], $locale);
             if (!$translation || ($translation['slug'] ?? '') === '') return null;
             array_unshift($parts, (string)$translation['slug']);
@@ -548,13 +834,23 @@ if (!function_exists('ct_ensure_schema')) {
     }
 
     function ct_category_url(PDO $pdo, array $category, ?string $locale = null, int $page = 1, string $query = ''): ?string {
-        if ($locale === null || $locale === '' || $locale === content_default_locale()) {
-            return function_exists('get_category_permalink') ? get_category_permalink($pdo, $category, $page, $query) : null;
+        $isDefault = $locale === null || $locale === '' || $locale === content_default_locale();
+        if ($isDefault && function_exists('get_category_permalink')) {
+            $hadRequestLocale = array_key_exists('ct_request_locale', $GLOBALS);
+            $requestLocale = $GLOBALS['ct_request_locale'] ?? null;
+            unset($GLOBALS['ct_request_locale']);
+            try {
+                return get_category_permalink($pdo, $category, $page, $query);
+            } finally {
+                if ($hadRequestLocale) $GLOBALS['ct_request_locale'] = $requestLocale;
+            }
         }
-        $path = ct_category_translation_path($pdo, $category, $locale);
-        if ($path === null) return null;
+
+        $path = ct_category_translation_path($pdo, $category, (string)$locale);
+        if ($path === null || $path === '') return null;
         $base = trim(function_exists('get_category_base') ? get_category_base($pdo) : '/category/', '/');
-        $url = '/' . $locale . '/' . ($base !== '' ? $base . '/' : '') . $path . '/';
+        $encodedPath = implode('/', array_map('rawurlencode', explode('/', $path)));
+        $url = '/' . rawurlencode((string)$locale) . '/' . ($base !== '' ? $base . '/' : '') . $encodedPath . '/';
         if ($page > 1) $url .= 'p/' . $page . '/';
         return $query !== '' ? $url . '?' . http_build_query(['q' => $query]) : $url;
     }
