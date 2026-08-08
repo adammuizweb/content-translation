@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.7.0",
+  "version": "1.8.2",
   "title": "Content Translation",
   "description": "Reviewed translations for posts, pages, database theme partials, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
   "author": "Adam Muiz",
@@ -121,7 +121,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.7.0"],
+    "css": ["/static/plugins/content-translation/content-translation.css?v=1.8.2"],
     "js": []
   }
 }
