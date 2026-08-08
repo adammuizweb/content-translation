@@ -41,31 +41,90 @@ if ($slug === '' && $title !== '') {
     $slug = function_exists('cms_slugify') ? (string)cms_slugify($title) : strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $title), '-'));
 }
 $slug = preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $slug);
-
-// Ensure translated slug is unique within this locale (excluding this post)
-if ($slug !== '') {
-    ct_ensure_schema($pdo);
-    $chk = $pdo->prepare("SELECT post_id FROM post_translations WHERE locale = ? AND slug = ? AND post_id != ? LIMIT 1");
-    $chk->execute([$locale, $slug, $postId]);
-    if ($chk->fetchColumn()) {
-        echo json_encode(['error' => __('Slug already used by another translation in this locale')]);
-        return;
-    }
-    // Prevent collision with an original slug that would shadow routing
-    $chk2 = $pdo->prepare("SELECT id FROM posts WHERE slug = ? AND id != ? AND is_deleted = 0 LIMIT 1");
-    $chk2->execute([$slug, $postId]);
-    if ($chk2->fetchColumn()) {
-        echo json_encode(['error' => __('Slug collides with an existing original slug')]);
-        return;
-    }
+$slug = trim((string)preg_replace('#/+#', '/', $slug), '/');
+$metaDescription = trim((string)($_POST['meta_description'] ?? ''));
+$length = static fn(string $value): int => function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+if ($length($title) > 255 || $length($slug) > 255) {
+    echo json_encode(['error' => __('Title and slug must not exceed 255 characters')]);
+    return;
+}
+if ($length($metaDescription) > 320) {
+    echo json_encode(['error' => __('Meta description must not exceed 320 characters')]);
+    return;
 }
 
-$ok = ct_save_translation($pdo, $postId, $locale, [
-    'title'   => $title,
-    'slug'    => $slug,
-    'content' => (string)($_POST['content'] ?? ''),
-]);
+$existing = ct_get_translation($pdo, $postId, $locale);
+$status = (string)($_POST['status'] ?? ($existing['status'] ?? 'published'));
+if (!in_array($status, ['draft', 'published'], true)) {
+    echo json_encode(['error' => __('Invalid translation status')]);
+    return;
+}
+if ($status === 'published' && ($title === '' || $slug === '')) {
+    echo json_encode(['error' => __('Published translations require a title and slug')]);
+    return;
+}
 
-echo json_encode($ok
-    ? ['success' => true, 'message' => __('Translation saved.')]
-    : ['error' => __('Save failed.')]);
+$slugLock = '';
+try {
+    if ($slug !== '') {
+        $slugLock = 'ct_slug_' . substr(hash('sha256', $locale . ':' . $slug), 0, 56);
+        $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+        $lock->execute([$slugLock]);
+        if ((int)$lock->fetchColumn() !== 1) {
+            echo json_encode(['error' => __('Could not reserve the translated slug. Please try again.')]);
+            return;
+        }
+    }
+
+    // Ensure translated slug is unique within this locale (excluding this post).
+    if ($slug !== '') {
+        $firstSegment = (string)strtok($slug, '/');
+        $reservedRoutes = array_merge(
+            function_exists('get_posts_list_routes') ? get_posts_list_routes($pdo) : ['artikel'],
+            function_exists('get_pages_list_routes') ? get_pages_list_routes($pdo) : ['halaman'],
+            function_exists('get_category_routes') ? get_category_routes($pdo) : ['category'],
+            function_exists('ct_enabled_locales') ? ct_enabled_locales($pdo) : [],
+            ['author']
+        );
+        if (in_array($firstSegment, $reservedRoutes, true) || preg_match('/^\d{4}$/', $firstSegment)) {
+            echo json_encode(['error' => __('Slug uses a reserved public route')]);
+            return;
+        }
+
+        ct_ensure_schema($pdo);
+        $chk = $pdo->prepare("SELECT post_id FROM post_translations WHERE locale = ? AND slug = ? AND post_id != ? LIMIT 1");
+        $chk->execute([$locale, $slug, $postId]);
+        if ($chk->fetchColumn()) {
+            echo json_encode(['error' => __('Slug already used by another translation in this locale')]);
+            return;
+        }
+        // Prevent collision with an original slug that would shadow routing.
+        $chk2 = $pdo->prepare("SELECT id FROM posts WHERE slug = ? AND id != ? AND is_deleted = 0 LIMIT 1");
+        $chk2->execute([$slug, $postId]);
+        if ($chk2->fetchColumn()) {
+            echo json_encode(['error' => __('Slug collides with an existing original slug')]);
+            return;
+        }
+    }
+
+    $ok = ct_save_translation($pdo, $postId, $locale, [
+        'title'            => $title,
+        'slug'             => $slug,
+        'content'          => (string)($_POST['content'] ?? ''),
+        'meta_description' => $metaDescription,
+        'status'           => $status,
+    ]);
+
+    echo json_encode($ok
+        ? ['success' => true, 'message' => __('Translation saved.')]
+        : ['error' => __('Save failed.')]);
+} finally {
+    if ($slugLock !== '') {
+        try {
+            $release = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+            $release->execute([$slugLock]);
+        } catch (Throwable $e) {
+            error_log('[content-translation] slug lock release error: ' . $e->getMessage());
+        }
+    }
+}

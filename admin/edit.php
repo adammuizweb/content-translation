@@ -39,7 +39,7 @@ if (!$post) {
     return;
 }
 
-$translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => ''];
+$translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published'];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$post['content'])
@@ -85,6 +85,13 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
         <div class="ct-field">
           <label for="ct-meta-description"><?= __('Meta description') ?></label>
           <textarea id="ct-meta-description" name="meta_description" rows="3" maxlength="320" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>" placeholder="<?= h(__('Leave empty to use an excerpt of the translated content.')) ?>"><?= h((string)($translation['meta_description'] ?? '')) ?></textarea>
+        </div>
+        <div class="ct-field">
+          <label for="ct-status"><?= __('Status') ?></label>
+          <select id="ct-status" name="status">
+            <option value="published"<?= ($translation['status'] ?? 'published') === 'published' ? ' selected' : '' ?>><?= __('Published') ?></option>
+            <option value="draft"<?= ($translation['status'] ?? 'published') === 'draft' ? ' selected' : '' ?>><?= __('Draft') ?></option>
+          </select>
         </div>
         <div class="ct-field">
           <label><?= __('Content') ?></label>
