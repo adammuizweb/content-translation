@@ -454,6 +454,15 @@ if (!function_exists('ct_ensure_schema')) {
             $resource['label'] = $sectionLabel !== ''
                 ? $sectionLabel . ' (' . $resource['slot_key'] . ')'
                 : $resource['slot_key'];
+            if (function_exists('ct_directory_pages')) {
+                foreach (ct_directory_pages($pdo) as $page) {
+                    if ($page['theme_folder'] === $resource['theme_folder'] && $page['slot_key'] === $resource['slot_key']) {
+                        $resource['directory_page'] = $page;
+                        $resource['required_metadata'] = $page['required_metadata'];
+                        break;
+                    }
+                }
+            }
         }
         unset($resource);
         return $resources;
@@ -527,6 +536,9 @@ if (!function_exists('ct_ensure_schema')) {
                 if (!is_array($decoded) || !array_is_list($decoded)) return false;
             }
         }
+        foreach ((array)($resource['required_metadata'] ?? []) as $field) {
+            if (trim((string)($translation[$field] ?? '')) === '') return false;
+        }
         return true;
     }
 
@@ -583,7 +595,12 @@ if (!function_exists('ct_ensure_schema')) {
             if (!is_scalar($value)) throw new InvalidArgumentException('Theme field translations must be scalar values.');
             $values[$fieldKey] = (string)$value;
         }
-        $candidate = ['values' => $values, 'values_valid' => true];
+        $candidate = [
+            'values' => $values,
+            'values_valid' => true,
+            'seo_title' => $seoTitle,
+            'meta_description' => $metaDescription,
+        ];
         if ($status === 'published' && !ct_theme_file_translation_is_complete($candidate, $resource)) {
             throw new InvalidArgumentException('Every translatable theme field must be completed before publishing.');
         }
@@ -616,13 +633,18 @@ if (!function_exists('ct_ensure_schema')) {
         ct_ensure_schema($pdo);
         $out = [];
         foreach ($resources as $resource) {
-            $stmt = $pdo->prepare('SELECT locale, status, values_json FROM theme_file_translations WHERE theme_folder = ? AND slot_key = ?');
+            $stmt = $pdo->prepare('SELECT locale, status, values_json, seo_title, meta_description FROM theme_file_translations WHERE theme_folder = ? AND slot_key = ?');
             $stmt->execute([(string)$resource['theme_folder'], (string)$resource['slot_key']]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 $status = (string)$row['status'];
                 if ($status === 'published') {
                     $values = ct_theme_file_decode_values((string)$row['values_json']);
-                    if ($values === null || !ct_theme_file_translation_is_complete(['values' => $values, 'values_valid' => true], $resource)) {
+                    if ($values === null || !ct_theme_file_translation_is_complete([
+                        'values' => $values,
+                        'values_valid' => true,
+                        'seo_title' => $row['seo_title'],
+                        'meta_description' => $row['meta_description'],
+                    ], $resource)) {
                         $status = 'incomplete';
                     }
                 }

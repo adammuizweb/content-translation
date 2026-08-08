@@ -351,6 +351,21 @@ add_filter('content_permalink', function ($url, $post, $type) {
     return ct_post_url((string)($translation['slug'] ?? '') ?: (string)($post['slug'] ?? ''), $locale);
 }, 10, 3);
 
+// Preserve historical source URLs after the default content moves to English.
+add_filter('unresolved_content_redirect_url', function ($url, $path, $pdo) {
+    if ($url !== '' || !$pdo instanceof PDO || !empty($GLOBALS['ct_request_locale'])) return $url;
+    $slug = trim((string)$path, '/');
+    if ($slug === '') return $url;
+
+    $stmt = $pdo->prepare("SELECT pt.slug FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.slug = ? AND pt.slug <> p.slug AND pt.status = 'published' AND p.status = 'published' AND p.is_deleted = 0 AND NOT EXISTS (SELECT 1 FROM posts live WHERE live.slug = ? AND live.status = 'published' AND live.is_deleted = 0) LIMIT 1");
+    foreach (ct_enabled_locales($pdo) as $locale) {
+        $stmt->execute([$locale, $slug, $slug]);
+        $translatedSlug = $stmt->fetchColumn();
+        if (is_string($translatedSlug) && $translatedSlug !== '') return ct_post_url($translatedSlug, $locale);
+    }
+    return $url;
+}, 10, 3);
+
 // ─── Localized document metadata ───
 add_filter('html_lang_attribute', function ($lang) {
     return $GLOBALS['ct_request_locale'] ?? $lang;
@@ -460,6 +475,7 @@ if (!function_exists('ct_switcher_html')) {
         $currentCategory = $GLOBALS['ct_current_category'] ?? null;
         $currentAuthor = $GLOBALS['ct_current_author'] ?? null;
         $currentThemeFile = $GLOBALS['ct_current_theme_file'] ?? null;
+        $currentDirectoryPage = function_exists('ct_current_directory_page') ? ct_current_directory_page() : null;
 
         $localizedRequestUrl = static function (?string $locale = null): string {
             $path = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
@@ -468,6 +484,32 @@ if (!function_exists('ct_switcher_html')) {
             $prefix = $locale ? '/' . rawurlencode($locale) : '';
             return $prefix . ($path === '/' ? '/' : '/' . ltrim($path, '/')) . ($query !== '' ? '?' . $query : '');
         };
+        $requestPath = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
+        $requestPath = preg_replace('#^/[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?(?=/|$)#', '', $requestPath) ?: '/';
+        $requestPath = trim($requestPath, '/');
+
+        if (is_array($currentDirectoryPage)) {
+            $locales = ct_enabled_locales($pdo);
+            $currentLocale = $GLOBALS['ct_request_locale'] ?? content_default_locale();
+            $items = [];
+            if (ct_directory_page_route_is_available($pdo, $currentDirectoryPage)) {
+                $items[] = [
+                    'locale' => content_default_locale(),
+                    'url' => ct_directory_page_url($currentDirectoryPage),
+                    'active' => $currentLocale === content_default_locale(),
+                ];
+            }
+            foreach ($locales as $locale) {
+                if (!ct_directory_page_route_is_available($pdo, $currentDirectoryPage, $locale)
+                    || !ct_get_published_directory_page_translation($pdo, $currentDirectoryPage, $locale)) continue;
+                $items[] = [
+                    'locale' => $locale,
+                    'url' => ct_directory_page_url($currentDirectoryPage, $locale),
+                    'active' => $currentLocale === $locale,
+                ];
+            }
+            return ct_render_switcher_items($items, $title, $style);
+        }
 
         if (!empty($GLOBALS['ct_theme_file_homepage']) && is_array($currentThemeFile)) {
             $locales = ct_enabled_locales($pdo);
@@ -509,7 +551,14 @@ if (!function_exists('ct_switcher_html')) {
             }
             return ct_render_switcher_items($items, $title, $style);
         }
-        if (!is_array($current) && (preg_match('#^/\d{4}(?:/\d{2})?/#', (string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)) || isset($_GET['s']))) {
+        $listRoutes = array_merge(
+            function_exists('get_posts_list_routes') ? get_posts_list_routes($pdo) : ['artikel'],
+            function_exists('get_pages_list_routes') ? get_pages_list_routes($pdo) : ['halaman']
+        );
+        $isCollection = function_exists('collection_match_route_base')
+            && collection_match_route_base($requestPath, $listRoutes) !== null;
+        $isArchive = preg_match('#^\d{4}(?:/\d{2})?(?:/(?:p|page)/\d+)?$#', $requestPath) === 1;
+        if (!is_array($current) && ($isCollection || $isArchive || isset($_GET['s']))) {
             $items = [['locale' => content_default_locale(), 'url' => $localizedRequestUrl(), 'active' => $currentLocale === content_default_locale()]];
             foreach ($locales as $locale) $items[] = ['locale' => $locale, 'url' => $localizedRequestUrl($locale), 'active' => $currentLocale === $locale];
             return ct_render_switcher_items($items, $title, $style);
@@ -654,6 +703,7 @@ add_action('init', function () {
     // public/index.php can serve the default root without invoking router_path.
     $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
     if ($path !== '' || trim((string)($_GET['s'] ?? '')) !== '') return;
+    if (function_exists('ct_current_directory_page') && ct_current_directory_page() !== null) return;
     if (ct_homepage_theme_post($pdo)) return;
     $resource = ct_homepage_theme_file_resource($pdo);
     if (!$resource) return;
