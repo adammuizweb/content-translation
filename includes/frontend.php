@@ -264,7 +264,7 @@ add_filter('theme_mod_value', function ($value, $fieldKey, $themeFolder, $slotKe
 add_filter('collection_query_clauses', function ($clauses, $context) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     $scope = $context['scope'] ?? '';
-    if (!$locale || !in_array($scope, ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts'], true)) return $clauses;
+    if (!$locale || !in_array($scope, ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts', 'post_category_shortcode'], true)) return $clauses;
     $alias = in_array($context['table_alias'] ?? '', ['p', 'posts'], true) ? $context['table_alias'] : 'posts';
     $requiredFields = array_values(array_intersect(
         ['title', 'slug', 'content'],
@@ -343,7 +343,7 @@ add_filter('collection_rows', function ($rows, $context) {
     if (($context['scope'] ?? '') === 'category_index') {
         return array_values(array_map(fn($category) => ct_overlay_category_translation($category, $pdo), array_filter($rows, fn($category) => ct_get_published_category_translation($pdo, (int)($category['id'] ?? 0), $locale) !== null)));
     }
-    if (in_array($context['scope'] ?? '', ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts'], true)) {
+    if (in_array($context['scope'] ?? '', ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts', 'post_category_shortcode'], true)) {
         return array_map(fn($post) => ct_overlay_published_translation($post, $pdo, $locale), $rows);
     }
     return $rows;
@@ -353,6 +353,11 @@ add_filter('collection_url', function ($url, $type, $context) {
     $pdo = $GLOBALS['pdo'] ?? null;
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     if (!$pdo instanceof PDO || !$locale) return $url;
+    if (($context['scope'] ?? '') === 'post_category_shortcode' && in_array($type, ['article', 'page'], true)) {
+        $item = is_array($context['item'] ?? null) ? $context['item'] : [];
+        $slug = trim((string)($item['ct_translated_slug'] ?? ''));
+        return $slug !== '' ? ct_post_url($slug, $locale) : $url;
+    }
     if (($context['route'] ?? '') === 'category') {
         $base = trim(get_category_base($pdo), '/');
         $path = isset($context['category_id']) ? ct_category_translation_path($pdo, ['id' => (int)$context['category_id']], $locale) : null;
