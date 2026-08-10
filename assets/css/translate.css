@@ -166,6 +166,7 @@
   margin-bottom: .35rem;
 }
 .ct-field input[type="text"],
+.ct-field input:not([type]),
 .ct-field textarea {
   width: 100%;
   padding: .5rem .7rem;
@@ -280,6 +281,30 @@
 .ct-settings-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
 
 .ct-actions { display: flex; gap: .6rem; margin-top: 1.25rem; }
+.ct-source-state { display:inline-flex; align-items:center; min-height:1.9rem; padding:.2rem .65rem; border:1px solid rgba(127,127,127,.35); border-radius:999px; font-size:.78rem; font-weight:700; }
+.ct-source-state--current { border-color:rgba(46,204,113,.55); background:rgba(46,204,113,.13); }
+.ct-source-state--stale { border-color:rgba(231,76,60,.55); background:rgba(231,76,60,.12); }
+.ct-source-state--unverified { border-color:rgba(241,196,15,.58); background:rgba(241,196,15,.12); }
+.ct-section-order { font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow-wrap:anywhere; }
+.ct-package-editor { max-width:1440px; }
+.ct-package-identity { margin-bottom:1rem; border-top:3px solid var(--adam-primary,#2563eb); }
+.ct-package-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 180px; gap:0 1rem; }
+.ct-package-field-wide { grid-column:span 2; }
+.ct-package-sections { display:grid; gap:1.25rem; }
+.ct-package-section { overflow:hidden; border:1px solid var(--adam-border,rgba(127,127,127,.25)); border-radius:12px; background:var(--adam-card,transparent); }
+.ct-package-section > header { display:flex; align-items:center; gap:.7rem; padding:.75rem 1rem; border-bottom:1px solid var(--adam-border,rgba(127,127,127,.25)); background:color-mix(in srgb,var(--adam-primary,#2563eb) 7%,transparent); }
+.ct-package-section > header span { color:var(--adam-muted,inherit); font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.ct-package-section > header code { margin-left:auto; color:var(--adam-muted,inherit); font-size:.72rem; }
+.ct-package-columns { display:grid; grid-template-columns:1fr 1fr; }
+.ct-package-side { min-width:0; padding:1rem; }
+.ct-package-side + .ct-package-side { border-left:1px solid var(--adam-border,rgba(127,127,127,.25)); }
+.ct-package-side h4 { margin:0 0 1rem; }
+.ct-preview-label { display:block; margin:.25rem 0 .4rem; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.ct-section-preview { display:block; box-sizing:border-box; width:100%; min-height:260px; border:1px solid var(--adam-border-2,rgba(127,127,127,.35)); border-radius:8px; background:#fff; }
+.ct-advanced-html { margin-top:1rem; }
+.ct-advanced-html > summary { cursor:pointer; font-weight:700; }
+.ct-advanced-html .CodeMirror { margin-top:.6rem; border:1px solid rgba(127,127,127,.35); border-radius:7px; font-size:12px; text-align:left; }
+.ct-section-html { box-sizing:border-box; width:100%; min-height:280px; margin-top:.6rem; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 .ct-rtl-editor { text-align: right; }
 .ct-rtl-editor .ct-field > label { text-align: right; }
 .ct-rtl-editor .ql-editor { direction: rtl; text-align: right; }
@@ -335,13 +360,19 @@
 @media (max-width: 640px) {
   .ct-hub-grid { grid-template-columns:1fr; }
   .ct-translations-col { width: auto; }
-  .ct-table th:nth-child(3),
-  .ct-table td:nth-child(3) { display: none; }
+  .ct-table:not(.ct-theme-sections-table) th:nth-child(3),
+  .ct-table:not(.ct-theme-sections-table) td:nth-child(3) { display: none; }
   .ct-settings-grid { grid-template-columns: 1fr; }
   .ct-add-language-controls { align-items: stretch; flex-direction: column; }
   .ct-add-language-or { text-align: center; }
   .ct-settings-actions { justify-content: stretch; }
   .ct-settings-actions .btn { width: 100%; }
+  .ct-package-fields,
+  .ct-package-columns { grid-template-columns:1fr; }
+  .ct-package-field-wide { grid-column:auto; }
+  .ct-package-side + .ct-package-side { border-left:0; border-top:1px solid var(--adam-border,rgba(127,127,127,.25)); }
+  .ct-package-section > header { align-items:flex-start; flex-wrap:wrap; }
+  .ct-package-section > header code { width:100%; margin-left:0; }
 }
 
 /* Frontend language switcher widget */

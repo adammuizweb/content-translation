@@ -39,7 +39,19 @@ if (!$post) {
     return;
 }
 
-$translation = ct_get_translation($pdo, $postId, $locale) ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published'];
+if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$post['content']) !== null) {
+    $packageEditor = $base . '/?page=admin/tools/content-translation/theme-section-edit&post_id=' . $postId . '&locale=' . urlencode($locale);
+    if (!headers_sent()) {
+        header('Location: ' . $packageEditor, true, 302);
+        exit;
+    }
+    echo '<script>window.location.replace(' . json_encode($packageEditor, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ')</script>';
+    echo '<p><a href="' . h($packageEditor) . '">' . h(__('Open Theme Section editor')) . '</a></p>';
+    return;
+}
+
+$translationRow = ct_get_translation($pdo, $postId, $locale);
+$translation = $translationRow ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published'];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$post['content'])
@@ -73,6 +85,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="post_id" value="<?= $postId ?>">
         <input type="hidden" name="locale" value="<?= h($locale) ?>">
+        <input type="hidden" name="translation_state" value="<?= h(ct_translation_row_state_token($translationRow)) ?>">
 
         <div class="ct-field">
           <label for="ct-title"><?= __('Title') ?></label>
@@ -199,6 +212,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
     try {
       const res = await fetch('<?= $saveUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
       const data = await res.json();
+      if (data.success && data.translation_state) form.elements.translation_state.value = data.translation_state;
       notify(data.success ? 'success' : 'error', data.success ? (data.message || '<?= __('Translation saved.') ?>') : (data.error || '<?= __('Save failed.') ?>'));
     } catch (err) {
       notify('error', '<?= __('Network error.') ?>');
@@ -223,7 +237,8 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
     const fd = new FormData();
     fd.set('csrf_token', form.querySelector('[name=csrf_token]').value);
     fd.set('post_id', '<?= $postId ?>');
-    fd.set('locale', '<?= h($locale) ?>');
+     fd.set('locale', '<?= h($locale) ?>');
+     fd.set('translation_state', form.querySelector('[name=translation_state]').value);
     try {
       const res = await fetch('<?= $deleteUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
       const data = await res.json();

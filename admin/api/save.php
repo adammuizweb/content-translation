@@ -28,10 +28,15 @@ if (!in_array($locale, ct_enabled_locales($pdo), true)) {
     return;
 }
 
-$stmt = $pdo->prepare("SELECT id FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, content FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
-if (!$stmt->fetchColumn()) {
+$sourcePost = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$sourcePost) {
     echo json_encode(['error' => 'Post not found']);
+    return;
+}
+if (($sourcePost['type'] ?? '') === 'theme' && ct_parse_theme_section_composition((string)($sourcePost['content'] ?? '')) !== null) {
+    echo json_encode(['error' => __('Use the Theme Section editor for this Theme Template.')]);
     return;
 }
 
@@ -137,10 +142,18 @@ try {
     }
 
     $ok = ct_save_translation($pdo, $postId, $locale, $candidate);
-
-    echo json_encode($ok
-        ? ['success' => true, 'message' => __('Translation saved.')]
-        : ['error' => __('Save failed.')]);
+    if ($ok) {
+        $savedStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1');
+        $savedStmt->execute([$postId, $locale]);
+        $saved = $savedStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        echo json_encode([
+            'success' => true,
+            'message' => __('Translation saved.'),
+            'translation_state' => ct_translation_row_state_token($saved),
+        ]);
+    } else {
+        echo json_encode(['error' => __('Save failed.')]);
+    }
 } finally {
     if ($slugLock !== '') {
         try {

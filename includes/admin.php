@@ -39,30 +39,33 @@ add_action('site_settings_after_save', function ($pdo, $input) {
 // ─── Translation picker in Core content editors ───
 if (!function_exists('ct_render_editor_translation_picker')) {
     function ct_render_editor_translation_picker(array $post, PDO $pdo): void {
-    $id = (int)($post['id'] ?? 0);
-    if ($id <= 0) return;
+        if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
+        $id = (int)($post['id'] ?? 0);
+        if ($id <= 0) return;
 
-    $locales = ct_enabled_locales($pdo);
-    if (empty($locales)) return;
+        $locales = ct_enabled_locales($pdo);
+        if (empty($locales)) return;
 
-    $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
-    $editUrl = $base . '/?page=admin/tools/content-translation/edit';
-    $translations = ct_translations_for_post($pdo, $id);
+        $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
+        $packageComposed = ($post['type'] ?? '') === 'theme'
+            && ct_parse_theme_section_composition((string)($post['content'] ?? '')) !== null;
+        $editUrl = $base . '/?page=admin/tools/content-translation/' . ($packageComposed ? 'theme-section-edit' : 'edit');
+        $translations = ct_translations_for_post($pdo, $id);
 
-    echo '<section class="ct-editor-translation-control">';
-    echo '<label for="ct-editor-translation-locale">' . htmlspecialchars(__('Translations'), ENT_QUOTES) . '</label>';
-    echo '<select id="ct-editor-translation-locale" onchange="if(this.value) window.location.href=this.value">';
-    echo '<option value="">' . htmlspecialchars(__('Choose translation language…'), ENT_QUOTES) . '</option>';
-    foreach ($locales as $locale) {
-        $translation = $translations[$locale] ?? null;
-        $has = $translation !== null;
-        $isDraft = $has && ($translation['status'] ?? 'published') === 'draft';
-        $label = strtoupper($locale) . ' — ' . ($isDraft ? __('Draft') : ($has ? __('Edit') : __('Add')));
-        $url = $editUrl . '&post_id=' . $id . '&locale=' . urlencode($locale);
-        echo '<option value="' . htmlspecialchars($url, ENT_QUOTES) . '">' . htmlspecialchars($label, ENT_QUOTES) . '</option>';
-    }
-    echo '</select>';
-    echo '</section>';
+        echo '<section class="ct-editor-translation-control">';
+        echo '<label for="ct-editor-translation-locale">' . htmlspecialchars(__('Translations'), ENT_QUOTES) . '</label>';
+        echo '<select id="ct-editor-translation-locale" onchange="if(this.value) window.location.href=this.value">';
+        echo '<option value="">' . htmlspecialchars(__('Choose translation language…'), ENT_QUOTES) . '</option>';
+        foreach ($locales as $locale) {
+            $translation = $translations[$locale] ?? null;
+            $has = $translation !== null;
+            $isDraft = $has && ($translation['status'] ?? 'published') === 'draft';
+            $label = strtoupper($locale) . ' — ' . ($isDraft ? __('Draft') : ($has ? __('Edit') : __('Add')));
+            $url = $editUrl . '&post_id=' . $id . '&locale=' . urlencode($locale);
+            echo '<option value="' . htmlspecialchars($url, ENT_QUOTES) . '">' . htmlspecialchars($label, ENT_QUOTES) . '</option>';
+        }
+        echo '</select>';
+        echo '</section>';
     }
 }
 
@@ -83,6 +86,7 @@ add_action('theme_editor_before_content', function ($theme, $pdo) {
 
 add_action('category_editor_after_fields', function ($category, $pdo) {
     if (!is_array($category) || !$pdo instanceof PDO) return;
+    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
     $locales = ct_enabled_locales($pdo);
     if (empty($locales)) return;
     $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
@@ -98,6 +102,7 @@ add_action('category_editor_after_fields', function ($category, $pdo) {
 
 add_action('profile_after_fields', function ($user, $pdo) {
     if (!is_array($user) || !$pdo instanceof PDO) return;
+    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
     $locales = ct_enabled_locales($pdo);
     if (empty($locales)) return;
     $id = 'ct-author-bio-' . (int)$user['id'];
@@ -116,6 +121,7 @@ add_action('profile_after_fields', function ($user, $pdo) {
 
 add_action('profile_after_save', function ($userId, $pdo, $input) {
     if (!$pdo instanceof PDO || !is_array($input)) return;
+    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
     foreach ((array)($input['ct_author_bio'] ?? []) as $locale => $bio) {
         ct_save_author_profile_translation($pdo, (int)$userId, (string)$locale, trim((string)$bio));
     }

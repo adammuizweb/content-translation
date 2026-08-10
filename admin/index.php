@@ -35,13 +35,14 @@ if ($section === 'content-translation'):
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/posts') ?>"><i>01</i><strong><?= __('Posts') ?></strong><span><?= __('Translate article title, slug, content, and SEO description.') ?></span><b><?= __('Manage posts') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/pages') ?>"><i>02</i><strong><?= __('Pages') ?></strong><span><?= __('Translate standalone pages with the same reviewed workflow.') ?></span><b><?= __('Manage pages') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/themes') ?>"><i>03</i><strong><?= __('Theme Partials') ?></strong><span><?= __('Translate database-backed theme content and its metadata.') ?></span><b><?= __('Manage theme partials') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-files') ?>"><i>04</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>05</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/menus/index') ?>"><i>06</i><strong><?= __('Menus') ?></strong><span><?= __('Translate navigation labels and manual URLs from the menu editor.') ?></span><b><?= __('Open menus') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/sidebar/index') ?>"><i>07</i><strong><?= __('Sidebar') ?></strong><span><?= __('Translate widget titles and supported widget text in each sidebar zone.') ?></span><b><?= __('Open sidebar') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/settings/site') ?>"><i>08</i><strong><?= __('Site Identity') ?></strong><span><?= __('Set localized site title and description for homepage and metadata.') ?></span><b><?= __('Open site settings') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/profile/index') ?>"><i>09</i><strong><?= __('Author Profiles') ?></strong><span><?= __('Translate the author bio from each user profile.') ?></span><b><?= __('Open profiles') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($settingsUrl) ?>"><i>10</i><strong><?= __('Languages & Sitemap') ?></strong><span><?= __('Enable locales, choose sitemap languages, and download a backup.') ?></span><b><?= __('Open settings') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-sections') ?>"><i>04</i><strong><?= __('Theme Sections') ?></strong><span><?= __('Translate locked Theme Template compositions section by section.') ?></span><b><?= __('Manage theme sections') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-files') ?>"><i>05</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>06</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/menus/index') ?>"><i>07</i><strong><?= __('Menus') ?></strong><span><?= __('Translate navigation labels and manual URLs from the menu editor.') ?></span><b><?= __('Open menus') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/sidebar/index') ?>"><i>08</i><strong><?= __('Sidebar') ?></strong><span><?= __('Translate widget titles and supported widget text in each sidebar zone.') ?></span><b><?= __('Open sidebar') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/settings/site') ?>"><i>09</i><strong><?= __('Site Identity') ?></strong><span><?= __('Set localized site title and description for homepage and metadata.') ?></span><b><?= __('Open site settings') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/profile/index') ?>"><i>10</i><strong><?= __('Author Profiles') ?></strong><span><?= __('Translate the author bio from each user profile.') ?></span><b><?= __('Open profiles') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($settingsUrl) ?>"><i>11</i><strong><?= __('Languages & Sitemap') ?></strong><span><?= __('Enable locales, choose sitemap languages, and download a backup.') ?></span><b><?= __('Open settings') ?> →</b></a>
   </section>
   <aside class="ct-hub-tip"><strong><?= __('How it works') ?></strong><span><?= __('Default-language content stays unchanged. A locale URL and sitemap entry appear only after a reviewed translation is published.') ?></span></aside>
 </div>
@@ -120,14 +121,57 @@ if ($q !== '') {
     $params[] = '%' . $q . '%';
 }
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE $where");
-$countStmt->execute($params);
-$total = (int)$countStmt->fetchColumn();
-$totalPages = max(1, (int)ceil($total / $perPage));
-
-$listStmt = $pdo->prepare("SELECT id, type, title, slug, status FROM posts WHERE $where ORDER BY updated_at DESC LIMIT $perPage OFFSET $offset");
-$listStmt->execute($params);
-$posts = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+if ($typeFilter === 'theme') {
+    $batchSize = 250;
+    $cursorUpdated = '9999-12-31 23:59:59';
+    $cursorId = PHP_INT_MAX;
+    $total = 0;
+    $posts = [];
+    $lastMatches = [];
+    $contentStmt = $pdo->prepare('SELECT content FROM posts WHERE id = ? LIMIT 1');
+    do {
+        $listStmt = $pdo->prepare("SELECT id, type, title, slug, status, updated_at,
+                CASE WHEN LOCATE('widget:theme_section', content) > 0 THEN 1 ELSE 0 END AS package_candidate
+            FROM posts WHERE $where AND (updated_at < ? OR (updated_at = ? AND id < ?))
+            ORDER BY updated_at DESC, id DESC LIMIT $batchSize");
+        $listStmt->execute(array_merge($params, [$cursorUpdated, $cursorUpdated, $cursorId]));
+        $candidates = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($candidates as $post) {
+            $packageComposed = false;
+            if ((int)$post['package_candidate'] === 1) {
+                $contentStmt->execute([(int)$post['id']]);
+                $packageComposed = ct_parse_theme_section_composition((string)$contentStmt->fetchColumn()) !== null;
+            }
+            if ($packageComposed) continue;
+            unset($post['package_candidate']);
+            if ($total >= $offset && count($posts) < $perPage) $posts[] = $post;
+            $lastMatches[] = $post;
+            if (count($lastMatches) > $perPage) array_shift($lastMatches);
+            $total++;
+        }
+        if ($candidates !== []) {
+            $lastCandidate = $candidates[count($candidates) - 1];
+            $cursorUpdated = (string)$lastCandidate['updated_at'];
+            $cursorId = (int)$lastCandidate['id'];
+        }
+    } while (count($candidates) === $batchSize);
+    $totalPages = max(1, (int)ceil($total / $perPage));
+    $boundedPage = min($pageNum, $totalPages);
+    if ($boundedPage !== $pageNum) {
+        $desiredOffset = ($boundedPage - 1) * $perPage;
+        $lastStart = max(0, $total - count($lastMatches));
+        $posts = array_slice($lastMatches, max(0, $desiredOffset - $lastStart), $perPage);
+        $pageNum = $boundedPage;
+    }
+} else {
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE $where");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+    $listStmt = $pdo->prepare("SELECT id, type, title, slug, status FROM posts WHERE $where ORDER BY updated_at DESC LIMIT $perPage OFFSET $offset");
+    $listStmt->execute($params);
+    $posts = $listStmt->fetchAll(PDO::FETCH_ASSOC);
+    $totalPages = max(1, (int)ceil($total / $perPage));
+}
 
 $statuses = ct_translation_statuses($pdo, array_map(fn($p) => (int)$p['id'], $posts));
 
@@ -211,7 +255,7 @@ $flashType = $_GET['flash_type'] ?? 'success';
         <?php if ($i === $pageNum): ?>
           <span class="ct-page-current"><?= $i ?></span>
         <?php else: ?>
-          <a href="<?= h($selfUrl . '&p=' . $i . ($q !== '' ? '&q=' . urlencode($q) : '') . ($typeFilter !== '' ? '&type=' . urlencode($typeFilter) : '')) ?>"><?= $i ?></a>
+          <a href="<?= h($base . '/?page=' . rawurlencode($route) . '&p=' . $i . ($q !== '' ? '&q=' . urlencode($q) : '') . ($typeFilter !== '' ? '&type=' . urlencode($typeFilter) : '')) ?>"><?= $i ?></a>
         <?php endif; ?>
       <?php endfor; ?>
     </div>

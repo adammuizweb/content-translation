@@ -11,12 +11,13 @@ Content Translation supports three separate theme workflows:
 All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-Content Translation `1.9.0` requires Jyavani Core `2.3.55` or newer. Core
+Content Translation `1.10.0` requires Jyavani Core `2.3.57` or newer. Core
 `2.3.54` introduced the generic Theme Section renderer and hooks required by the
 `ct-theme-sections-v1` adapter; Core `2.3.55` added the canonical content routes
-used by localized Theme Templates and their sitemaps. These releases also
-include the resource metadata and slot-aware `theme_mod_value` hook used by
-file-backed translation.
+used by localized Theme Templates and their sitemaps. Core `2.3.57` supplies the
+registered source descriptors and deterministic section fingerprints consumed
+by the editor. The Core contract also includes the slot-aware `theme_mod_value`
+hook used by file-backed translation.
 
 ## Theme Section package contract
 
@@ -48,9 +49,12 @@ A package has this ordered shape:
 }
 ```
 
-The adapter validates the exact package shape, theme and section identifiers,
-section count and content limits, safe fallback URLs, per-section hashes, and
-the aggregate hash. PHP fragments and nested widget shortcodes are rejected.
+The read adapter retains the exact 1.9 contract: it validates the package shape,
+theme and section identifiers, section count and content limits, safe fallback
+URLs, per-section hashes, and the aggregate hash. PHP fragments and nested
+widget shortcodes are rejected. Historically accepted section HTML, including
+inline scripts and event attributes, continues to decode for runtime
+compatibility.
 Section order is preserved when the package is converted to
 `[[widget:theme_section ...]]` composition.
 
@@ -63,8 +67,79 @@ Published package translations require a title and meta description. A slug is
 also required except for a Theme Template assigned to `main.homepage`, whose
 localized canonical URL is `/{locale}/`. Canonical Core content routes may be
 used instead of a translated slug when they resolve to the same post and locale.
-Until a package-aware editor is released, packages remain editable through the
-existing raw translation content field.
+Version 1.10 provides an admin-only package editor at **Tools / Content
+Translation / Theme Sections**. Package-composed Theme Templates are listed
+there instead of under Theme Partials. Opening the generic translation editor
+for one redirects to the package editor; templates containing plain HTML,
+ordinary shortcodes, or mixed content continue to use the generic editor.
+
+## Theme Section editor contract
+
+The source Theme Template must contain only whitespace and an ordered sequence
+of `[[widget:theme_section ...]]` shortcodes. Every shortcode must have one
+valid, unique `name`, syntactically complete attributes, and a currently
+registered Core definition. Mixed HTML, another shortcode type, malformed or
+duplicate attributes, duplicate section names, PHP markers, and nested widget
+content are not treated as a package composition.
+
+For each section the editor obtains Core's registered definition,
+`theme_section_source_descriptor()`, and
+`theme_section_source_fingerprint()`. It renders the source with the source post
+in the render context. Source and translated rendering are displayed in
+sandboxed preview frames. The translated controls expose semantic title,
+summary, URL, and link label fields plus an advanced raw HTML CodeMirror field.
+The source section identities and order are read-only.
+
+The page-level translated title, slug, meta description, and draft/published
+status remain available. Published packages require title and meta description,
+and require a slug except when the source Theme Template is assigned to
+`main.homepage`. The localized homepage therefore retains `/{locale}/` and an
+empty stored slug.
+
+On save, the browser sends section values but not hashes or package identity.
+The server verifies source identity/order, validates each HTML value without
+rewriting accepted bytes, calculates each `sha256`, calculates the ordered
+aggregate `source_sha256`, and encodes `ct-theme-sections-v1`. Existing valid v1
+packages are decoded in place and are never migrated on read. Re-saving an
+unchanged package preserves section order, translated HTML bytes, fallbacks,
+hashes, and runtime composition semantics.
+
+Translated section HTML is rejected if it contains PHP, nested widget
+shortcodes, script/style/iframe/object/embed, form or control elements, event
+handlers, `srcdoc`, `formaction`, unsafe URL schemes in URL-bearing attributes,
+or dangerous inline CSS such as `expression()`, imports, bindings, and
+JavaScript/VBScript/data URLs. Structural HTML, responsive images, SVG icon
+markup, data and ARIA attributes, CSS variables, and normal relative/HTTP(S),
+mail, and telephone links remain supported. Validation is reject-only: it does
+not sanitize or serialize accepted HTML.
+
+An unsafe section from an existing hash-valid v1 package is grandfathered only
+when the submitted HTML is byte-for-byte identical to that same named section.
+This permits fallback/metadata edits and safe changes elsewhere in the package
+without breaking existing runtime output. Any byte change to that unsafe HTML,
+or unsafe HTML in a new package, is rejected. The read adapter remains separate
+from this write-time policy.
+
+## Source verification and concurrency
+
+The plugin creates `ct_theme_section_translation_meta` idempotently. It stores
+the deterministic source-composition fingerprint for each post/locale after a
+successful package save. Existing translations without a metadata row show
+**Unverified source**, matching fingerprints show **Current**, and changed Core
+section definitions/renderers/composition show **Stale source**. There is no
+destructive migration. Export format version 3 adds
+`theme_section_translation_metadata`; all prior translation arrays retain their
+existing shape.
+
+The editor carries the source fingerprint and a hash of the complete
+translation row state. A save starts a transaction, locks the source post and
+translation row, reparses the live composition, and compares both lock values.
+A concurrent translation edit or source change fails before mutation. The
+translation package and source metadata are then committed together, or both
+are rolled back. Deletion locks and verifies the same translation state before
+removing the translation and source metadata atomically. Mutation endpoints
+require POST, an admin session through the manifest, and a valid Core CSRF
+token; package saves also enforce the admin role in depth.
 
 ## File-backed contract
 

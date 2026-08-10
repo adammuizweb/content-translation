@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "title": "Content Translation",
   "description": "Reviewed translations for posts, pages, Theme Section packages, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
   "author": "Adam Muiz",
@@ -14,7 +14,7 @@
   },
   "icon": "icon.png",
   "requires": {
-    "jyavani": ">=2.3.55",
+    "jyavani": ">=2.3.57",
     "php": ">=8.1",
     "extensions": ["pdo", "json"]
   },
@@ -51,6 +51,20 @@
         "route": "admin/tools/content-translation/themes",
         "file": "admin/index.php",
         "title": "Translate Theme Partials",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/content-translation/theme-sections",
+        "file": "admin/theme-sections.php",
+        "title": "Translate Theme Sections",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
+        "route": "admin/tools/content-translation/theme-section-edit",
+        "file": "admin/theme-section-edit.php",
+        "title": "Edit Theme Section Translation",
         "hidden": true,
         "roles": ["admin"]
       },
@@ -96,6 +110,12 @@
         "roles": ["admin"]
       },
       {
+        "route": "admin/tools/content-translation/api/theme-section-save",
+        "file": "admin/api/theme-section-save.php",
+        "hidden": true,
+        "roles": ["admin"]
+      },
+      {
         "route": "admin/tools/content-translation/api/delete",
         "file": "admin/api/delete.php",
         "hidden": true,
@@ -121,7 +141,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.9.0"],
+    "css": ["/static/plugins/content-translation/content-translation.css?v=1.10.0"],
     "js": []
   }
 }

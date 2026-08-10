@@ -89,6 +89,16 @@ if (!function_exists('ct_ensure_schema')) {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_theme_file_locale (theme_folder, slot_key, locale)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS ct_theme_section_translation_meta (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                post_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(16) NOT NULL,
+                source_fingerprint CHAR(64) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_ct_section_meta (post_id, locale),
+                KEY idx_ct_section_source (source_fingerprint)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             foreach ([
                 'post_translations',
                 'site_translations',
@@ -97,6 +107,7 @@ if (!function_exists('ct_ensure_schema')) {
                 'sidebar_item_translations',
                 'author_profile_translations',
                 'theme_file_translations',
+                'ct_theme_section_translation_meta',
             ] as $table) {
                 ct_expand_locale_column($pdo, $table);
             }
@@ -226,6 +237,7 @@ if (!function_exists('ct_ensure_schema')) {
             'author_profile_translations' => 'SELECT apt.*, u.email AS source_email FROM author_profile_translations apt INNER JOIN users u ON u.id = apt.user_id ORDER BY apt.user_id, apt.locale',
             'site_translations' => 'SELECT * FROM site_translations ORDER BY locale',
             'theme_file_translations' => 'SELECT * FROM theme_file_translations ORDER BY theme_folder, slot_key, locale',
+            'theme_section_translation_metadata' => 'SELECT post_id, locale, source_fingerprint, created_at, updated_at FROM ct_theme_section_translation_meta ORDER BY post_id, locale',
         ];
         $translations = [];
         foreach ($tables as $name => $sql) {
@@ -234,7 +246,7 @@ if (!function_exists('ct_ensure_schema')) {
 
         return [
             'format' => 'jyavani-content-translation-export',
-            'version' => 2,
+            'version' => 3,
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),
@@ -304,12 +316,27 @@ if (!function_exists('ct_ensure_schema')) {
         return $translation && ct_post_translation_is_complete($pdo, $translation) ? $translation : null;
     }
 
-    function ct_delete_translation(PDO $pdo, int $postId, string $locale): bool {
+    function ct_delete_translation(PDO $pdo, int $postId, string $locale, string $loadedState): bool {
         ct_ensure_schema($pdo);
+        $ownsTransaction = !$pdo->inTransaction();
         try {
+            if ($ownsTransaction) $pdo->beginTransaction();
+            $currentStmt = $pdo->prepare("SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE");
+            $currentStmt->execute([$postId, $locale]);
+            $current = $currentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (!function_exists('ct_translation_row_state_token')
+                || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
+                || !hash_equals($loadedState, ct_translation_row_state_token($current))) {
+                throw new RuntimeException('This translation was changed by another editor. Reload before deleting.');
+            }
             $stmt = $pdo->prepare("DELETE FROM post_translations WHERE post_id = ? AND locale = ?");
-            return $stmt->execute([$postId, $locale]);
+            $ok = $stmt->execute([$postId, $locale]);
+            $meta = $pdo->prepare("DELETE FROM ct_theme_section_translation_meta WHERE post_id = ? AND locale = ?");
+            $meta->execute([$postId, $locale]);
+            if ($ownsTransaction) $pdo->commit();
+            return $ok;
         } catch (Throwable $e) {
+            if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
             error_log('[content-translation] delete error: ' . $e->getMessage());
             return false;
         }

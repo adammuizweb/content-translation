@@ -27,6 +27,7 @@ add_action('plugin_uninstall', function (string $name): void {
         'author_profile_translations',
         'site_translations',
         'theme_file_translations',
+        'ct_theme_section_translation_meta',
     ] as $table) {
         $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
     }
