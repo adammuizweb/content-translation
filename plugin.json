@@ -1,8 +1,8 @@
 {
   "name": "content-translation",
-  "version": "1.8.3",
+  "version": "1.9.0",
   "title": "Content Translation",
-  "description": "Reviewed translations for posts, pages, database theme partials, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
+  "description": "Reviewed translations for posts, pages, Theme Section packages, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
   "author": "Adam Muiz",
   "author_uri": "https://jyavani.com/member/adammuiz/",
   "plugin_uri": "https://jyavani.com/plugin/content-translation/",
@@ -14,7 +14,7 @@
   },
   "icon": "icon.png",
   "requires": {
-    "jyavani": ">=2.3.53",
+    "jyavani": ">=2.3.55",
     "php": ">=8.1",
     "extensions": ["pdo", "json"]
   },
@@ -121,7 +121,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.8.3"],
+    "css": ["/static/plugins/content-translation/content-translation.css?v=1.9.0"],
     "js": []
   }
 }
