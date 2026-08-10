@@ -1,17 +1,70 @@
 # Theme Translation
 
-Content Translation supports two separate theme workflows:
+Content Translation supports three separate theme workflows:
 
 - **Theme Partials** translate database-backed posts whose `type` is `theme`.
+- **Theme Section Packages** adapt reviewed translations of Theme Templates
+  composed from Core Theme Sections.
 - **Theme Files** translate selected Theme Customizer values consumed by PHP theme
   files through Core's `theme_mod()` helper.
 
-Both workflows use reviewed draft/published records. The default content locale
+All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-File-backed translation requires Jyavani Core `2.3.49` or newer. Older Core
-versions do not expose the normalized resource metadata and slot-aware
-`theme_mod_value` hook required by this workflow.
+Content Translation `1.9.0` requires Jyavani Core `2.3.55` or newer. Core
+`2.3.54` introduced the generic Theme Section renderer and hooks required by the
+`ct-theme-sections-v1` adapter; Core `2.3.55` added the canonical content routes
+used by localized Theme Templates and their sitemaps. These releases also
+include the resource metadata and slot-aware `theme_mod_value` hook used by
+file-backed translation.
+
+## Theme Section package contract
+
+`ct-theme-sections-v1` is a plugin-owned translation format stored as the
+translated content of a database-backed Theme Template. It does not register
+site pages or Theme Sections. Themes or site-support plugins remain responsible
+for section definitions, PHP renderers, Theme Template assignments, and routes.
+
+A package has this ordered shape:
+
+```json
+{
+  "format": "ct-theme-sections-v1",
+  "theme_folder": "example",
+  "composition": "theme-sections-v1",
+  "source_sha256": "<sha256 of all section HTML in order>",
+  "sections": {
+    "landing.hero": {
+      "html": "<section><h1>Localized heading</h1></section>",
+      "fallback": {
+        "title": "Localized heading",
+        "summary": "Localized summary",
+        "url": "",
+        "link_label": ""
+      },
+      "sha256": "<sha256 of this section HTML>"
+    }
+  }
+}
+```
+
+The adapter validates the exact package shape, theme and section identifiers,
+section count and content limits, safe fallback URLs, per-section hashes, and
+the aggregate hash. PHP fragments and nested widget shortcodes are rejected.
+Section order is preserved when the package is converted to
+`[[widget:theme_section ...]]` composition.
+
+Localized HTML can replace a section only when the package's `theme_folder` is
+the active theme and Core resolved the PHP renderer from that theme's validated
+Theme Section directory. This ownership check prevents translated HTML from one
+theme being applied to another theme or to a global/default renderer.
+
+Published package translations require a title and meta description. A slug is
+also required except for a Theme Template assigned to `main.homepage`, whose
+localized canonical URL is `/{locale}/`. Canonical Core content routes may be
+used instead of a translated slug when they resolve to the same post and locale.
+Until a package-aware editor is released, packages remain editable through the
+existing raw translation content field.
 
 ## File-backed contract
 

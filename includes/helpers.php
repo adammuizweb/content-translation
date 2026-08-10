@@ -262,6 +262,21 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
+    function ct_post_translation_is_complete(PDO $pdo, array $translation): bool {
+        $complete = ($translation['status'] ?? 'published') === 'published'
+            && trim((string)($translation['title'] ?? '')) !== ''
+            && trim((string)($translation['slug'] ?? '')) !== '';
+        if (function_exists('apply_filters')) {
+            $complete = (bool)apply_filters(
+                'content_translation_post_translation_is_complete',
+                $complete,
+                $translation,
+                $pdo
+            );
+        }
+        return $complete;
+    }
+
     function ct_save_translation(PDO $pdo, int $postId, string $locale, array $data): bool {
         ct_ensure_schema($pdo);
         try {
@@ -286,7 +301,7 @@ if (!function_exists('ct_ensure_schema')) {
 
     function ct_get_published_translation(PDO $pdo, int $postId, string $locale): ?array {
         $translation = ct_get_translation($pdo, $postId, $locale);
-        return $translation && ($translation['status'] ?? 'published') === 'published' ? $translation : null;
+        return $translation && ct_post_translation_is_complete($pdo, $translation) ? $translation : null;
     }
 
     function ct_delete_translation(PDO $pdo, int $postId, string $locale): bool {
@@ -342,7 +357,7 @@ if (!function_exists('ct_ensure_schema')) {
             $stmt = $pdo->prepare("SELECT * FROM post_translations WHERE locale = ? AND slug = ? AND status = 'published' LIMIT 1");
             $stmt->execute([$locale, $slug]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            return $row ?: null;
+            return $row && ct_post_translation_is_complete($pdo, $row) ? $row : null;
         } catch (Throwable $e) {
             error_log('[content-translation] slug lookup error: ' . $e->getMessage());
             return null;
@@ -381,6 +396,31 @@ if (!function_exists('ct_ensure_schema')) {
         $post['ct_locale'] = $locale;
         $post['ct_translated_slug'] = (string)($translation['slug'] ?? '') !== '' ? (string)$translation['slug'] : (string)($post['slug'] ?? '');
         return $post;
+    }
+
+    function ct_public_post_url(PDO $pdo, array $post, ?string $locale = null): string {
+        $hadLocale = array_key_exists('ct_request_locale', $GLOBALS);
+        $previousLocale = $GLOBALS['ct_request_locale'] ?? null;
+        if ($locale === null || $locale === '' || $locale === content_default_locale()) {
+            unset($GLOBALS['ct_request_locale']);
+        } else {
+            $GLOBALS['ct_request_locale'] = $locale;
+        }
+
+        try {
+            if (($post['type'] ?? '') === 'page' && function_exists('get_page_permalink')) {
+                return get_page_permalink($post);
+            }
+            if (function_exists('get_post_permalink')) return get_post_permalink($post);
+            $slug = (string)($post['slug'] ?? '');
+            return ct_post_url($slug, $locale);
+        } finally {
+            if ($hadLocale) {
+                $GLOBALS['ct_request_locale'] = $previousLocale;
+            } else {
+                unset($GLOBALS['ct_request_locale']);
+            }
+        }
     }
 
     function ct_homepage_theme_post(PDO $pdo): ?array {

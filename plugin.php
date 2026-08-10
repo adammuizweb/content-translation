@@ -8,6 +8,7 @@ $__ct_dir = __DIR__;
 require_once $__ct_dir . '/includes/helpers.php';
 require_once $__ct_dir . '/includes/directory-pages.php';
 require_once $__ct_dir . '/includes/frontend.php';
+require_once $__ct_dir . '/includes/theme-section-packages.php';
 require_once $__ct_dir . '/includes/admin.php';
 
 unset($__ct_dir);
@@ -30,6 +31,6 @@ add_action('plugin_uninstall', function (string $name): void {
         $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
     }
 
-    $stmt = $pdo->prepare('DELETE FROM settings WHERE `key` IN (?, ?, ?)');
-    $stmt->execute(['content_translation_locales', 'content_translation_locale_directions', 'content_translation_sitemap_locales']);
+    $stmt = $pdo->prepare('DELETE FROM settings WHERE `key` IN (?, ?, ?, ?)');
+    $stmt->execute(['content_translation_locales', 'content_translation_locale_directions', 'content_translation_sitemap_locales', 'content_translation_homepage_sitemap_aliases']);
 });

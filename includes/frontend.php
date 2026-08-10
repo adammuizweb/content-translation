@@ -82,9 +82,38 @@ add_filter('router_path', function ($path) {
         return $categoryMatch['base'] . '/' . $resolved['source_path'] . $paginationSuffix;
     }
 
+    // Canonical and alias routes are valid only when the routed post has a
+    // reviewed translation for the requested locale.
+    if (function_exists('content_route_resolve')) {
+        try {
+            $localizedRoute = content_route_resolve($pdo, $rest, $first, 'public');
+        } catch (Throwable $e) {
+            $localizedRoute = null;
+        }
+        if (is_array($localizedRoute)) {
+            if (!ct_get_published_translation($pdo, (int)$localizedRoute['id'], $first)) ct_render_not_found();
+            if (function_exists('set_locale')) set_locale($first);
+            $GLOBALS['ct_request_locale'] = $first;
+            return $rest;
+        }
+    }
+
     // A locale URL exists only for a reviewed, published translation.
     $t = ct_find_translation_by_slug($pdo, $first, $rest);
     if (!$t) ct_render_not_found();
+
+    if (function_exists('content_route_resolve')) {
+        try {
+            $routed = content_route_resolve($pdo, $rest, $first, 'public');
+        } catch (Throwable $e) {
+            $routed = null;
+        }
+        if (is_array($routed) && (int)($routed['id'] ?? 0) === (int)$t['post_id']) {
+            if (function_exists('set_locale')) set_locale($first);
+            $GLOBALS['ct_request_locale'] = $first;
+            return $rest;
+        }
+    }
 
     $origSlug = ct_original_slug($pdo, (int)$t['post_id']);
     if ($origSlug === null || $origSlug === '') {
@@ -96,6 +125,10 @@ add_filter('router_path', function ($path) {
     }
     $GLOBALS['ct_request_locale'] = $first;
     return $origSlug;
+});
+
+add_filter('content_route_request_locale', function ($locale) {
+    return $GLOBALS['ct_request_locale'] ?? $locale;
 });
 
 // ─── Content swap: overlay translated fields on the resolved post ───
@@ -218,6 +251,7 @@ add_filter('theme_post_data', function ($post, $pdo) {
 
 add_filter('theme_slot_post_data', function ($post, $slotKey, $pdo) {
     if (!is_array($post) || !$pdo instanceof PDO) return $post;
+    $GLOBALS['ct_current_post'] = $post;
     return ct_overlay_published_translation($post, $pdo);
 }, 10, 3);
 
@@ -242,8 +276,15 @@ add_filter('post_content', function ($html, $post) {
     }
 
     $translation = ct_get_published_translation($pdo, $postId, (string)$locale);
-    $content = is_array($translation) ? (string)($translation['content'] ?? '') : '';
-    return trim($content) !== '' ? $content : $html;
+    if (!$translation || trim((string)($translation['content'] ?? '')) === '') return $html;
+    if (!function_exists('render_custom_post_template')) return (string)$translation['content'];
+
+    return render_custom_post_template($post, [
+        'post' => $post,
+        'page' => $post,
+        'site_context' => 'theme',
+        'page_title' => (string)($post['title'] ?? ''),
+    ]);
 }, 6, 2);
 
 // File-backed theme values are overlaid only when the whole declared resource is published.
@@ -306,8 +347,11 @@ add_filter('author_profile_data', function ($author, $pdo) {
 add_filter('sitemap_index_entries', function ($entries, $pdo, $domain, $limit) {
     if (!$pdo instanceof PDO) return $entries;
     foreach (ct_sitemap_locales($pdo) as $locale) {
-        foreach (['posts' => 'article', 'pages' => 'page'] as $type => $postType) {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published'");
+        foreach (['posts' => 'article', 'pages' => 'page', 'themes' => 'theme'] as $type => $postType) {
+            $routeRequirement = $postType === 'theme'
+                ? " AND EXISTS (SELECT 1 FROM content_routes cr WHERE cr.post_id = p.id AND cr.locale = pt.locale AND cr.canonical_slot = 1)"
+                : '';
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published'{$routeRequirement}");
             $stmt->execute([$locale, $postType]);
             $maps = (int)ceil((int)$stmt->fetchColumn() / max(1, (int)$limit));
             for ($page = 1; $page <= $maps; $page++) $entries[] = ['loc' => $domain . '/sitemap_' . rawurlencode($locale) . '_' . $type . '_' . $page . '.xml'];
@@ -317,10 +361,18 @@ add_filter('sitemap_index_entries', function ($entries, $pdo, $domain, $limit) {
 }, 10, 4);
 
 add_filter('sitemap_locale_rendered', function ($rendered, $locale, $type, $pageNum, $pdo) {
-    if ($rendered || !$pdo instanceof PDO || !in_array($locale, ct_sitemap_locales($pdo), true) || !in_array($type, ['posts', 'pages'], true)) return $rendered;
-    $postType = $type === 'posts' ? 'article' : 'page';
+    if ($rendered || !$pdo instanceof PDO || !in_array($locale, ct_sitemap_locales($pdo), true) || !in_array($type, ['posts', 'pages', 'themes'], true)) return $rendered;
+    $postType = match ($type) {
+        'posts' => 'article',
+        'themes' => 'theme',
+        default => 'page',
+    };
     $limit = 30;
-    $stmt = $pdo->prepare("SELECT pt.slug, COALESCE(pt.updated_at, p.updated_at, p.created_at) AS changed_at FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published' ORDER BY p.created_at DESC LIMIT ? OFFSET ?");
+    $routeJoin = $postType === 'theme'
+        ? " INNER JOIN content_routes cr ON cr.post_id = p.id AND cr.locale = pt.locale AND cr.canonical_slot = 1"
+        : '';
+    $pathSelect = $postType === 'theme' ? 'cr.path' : 'pt.slug';
+    $stmt = $pdo->prepare("SELECT {$pathSelect} AS slug, COALESCE(pt.updated_at, p.updated_at, p.created_at) AS changed_at FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id{$routeJoin} WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published' ORDER BY p.created_at DESC LIMIT ? OFFSET ?");
     $stmt->bindValue(1, $locale);
     $stmt->bindValue(2, $postType);
     $stmt->bindValue(3, $limit, PDO::PARAM_INT);
@@ -425,7 +477,15 @@ add_filter('document_title', function ($title, $pdo) {
 }, 10, 2);
 
 add_filter('document_meta_description', function ($description, $post, $pdo) {
-    if (!$pdo instanceof PDO || empty($GLOBALS['ct_theme_file_homepage'])) return $description;
+    if (!$pdo instanceof PDO) return $description;
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    if ($locale && is_array($post)) {
+        $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), (string)$locale);
+        if (trim((string)($translation['meta_description'] ?? '')) !== '') {
+            return $translation['meta_description'];
+        }
+    }
+    if (empty($GLOBALS['ct_theme_file_homepage'])) return $description;
     $translation = $GLOBALS['ct_current_theme_file_translation'] ?? null;
     return is_array($translation) && trim((string)($translation['meta_description'] ?? '')) !== ''
         ? $translation['meta_description']
@@ -456,8 +516,7 @@ add_filter('canonical_url', function ($url) {
     $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), $locale);
     if (!$translation) return $url;
 
-    $slug = (string)($translation['slug'] ?? '') ?: (string)($post['slug'] ?? '');
-    return ct_base_url() . ct_post_url($slug, $locale);
+    return ct_base_url() . ct_public_post_url($pdo, $post, (string)$locale);
 });
 
 // ─── hreflang alternate links in <head> ───
@@ -513,14 +572,14 @@ add_action('jy_head', function () {
         return;
     }
     $links = [];
-    $links[] = ['hreflang' => content_default_locale(), 'href' => $base . ct_post_url($slug)];
+    $links[] = ['hreflang' => content_default_locale(), 'href' => $base . ct_public_post_url($pdo, $post)];
 
     $translations = array_filter(ct_translations_for_post($pdo, $id), fn(array $translation) => ($translation['status'] ?? 'published') === 'published');
     foreach (ct_enabled_locales($pdo) as $locale) {
         $t = $translations[$locale] ?? null;
         if (!$t) continue;
-        $tSlug = (string)($t['slug'] ?? '') !== '' ? (string)$t['slug'] : $slug;
-        $links[] = ['hreflang' => $locale, 'href' => $base . ct_post_url($tSlug, $locale)];
+        if (!ct_get_published_translation($pdo, $id, $locale)) continue;
+        $links[] = ['hreflang' => $locale, 'href' => $base . ct_public_post_url($pdo, $post, $locale)];
     }
 
     if (count($links) < 2) return;
@@ -528,7 +587,7 @@ add_action('jy_head', function () {
     foreach ($links as $l) {
         echo '<link rel="alternate" hreflang="' . htmlspecialchars($l['hreflang'], ENT_QUOTES) . '" href="' . htmlspecialchars($l['href'], ENT_QUOTES) . '">' . "\n";
     }
-    echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . ct_post_url($slug), ENT_QUOTES) . '">' . "\n";
+    echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . ct_public_post_url($pdo, $post), ENT_QUOTES) . '">' . "\n";
 });
 
 // ─── Language switcher — shared renderer ───
@@ -643,7 +702,7 @@ if (!function_exists('ct_switcher_html')) {
         $items = [];
         $items[] = [
             'locale' => content_default_locale(),
-            'url'    => ct_post_url($slug),
+            'url'    => ct_public_post_url($pdo, $current),
             'active' => $currentLocale === content_default_locale(),
         ];
 
@@ -654,10 +713,10 @@ if (!function_exists('ct_switcher_html')) {
         foreach ($locales as $locale) {
             $t = $translations[$locale] ?? null;
             if (!$t) continue;
-            $tSlug = (string)($t['slug'] ?? '') ?: $slug;
+            if (!ct_get_published_translation($pdo, (int)$current['id'], $locale)) continue;
             $items[] = [
                 'locale' => $locale,
-                'url'    => ct_post_url($tSlug, $locale),
+                'url'    => ct_public_post_url($pdo, $current, $locale),
                 'active' => $currentLocale === $locale,
             ];
         }

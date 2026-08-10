@@ -102,9 +102,10 @@ if (!function_exists('ct_register_directory_page')) {
         if ($locale === null) return true;
 
         ct_ensure_schema($pdo);
-        $stmt = $pdo->prepare("SELECT 1 FROM post_translations WHERE locale = ? AND slug = ? AND status = 'published' LIMIT 1");
+        $stmt = $pdo->prepare("SELECT * FROM post_translations WHERE locale = ? AND slug = ? AND status = 'published' LIMIT 1");
         $stmt->execute([$locale, $path]);
-        return !$stmt->fetchColumn();
+        $translation = $stmt->fetch(PDO::FETCH_ASSOC);
+        return !$translation || !ct_post_translation_is_complete($pdo, $translation);
     }
 
     function ct_current_directory_page(): ?array {

@@ -35,9 +35,11 @@ if (!$stmt->fetchColumn()) {
     return;
 }
 
+$homepage = function_exists('ct_homepage_theme_post') ? ct_homepage_theme_post($pdo) : null;
+$isHomepage = is_array($homepage) && (int)($homepage['id'] ?? 0) === $postId;
 $title = trim((string)($_POST['title'] ?? ''));
 $slug = trim((string)($_POST['slug'] ?? ''));
-if ($slug === '' && $title !== '') {
+if (!$isHomepage && $slug === '' && $title !== '') {
     $slug = function_exists('cms_slugify') ? (string)cms_slugify($title) : strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $title), '-'));
 }
 $slug = preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $slug);
@@ -59,7 +61,7 @@ if (!in_array($status, ['draft', 'published'], true)) {
     echo json_encode(['error' => __('Invalid translation status')]);
     return;
 }
-if ($status === 'published' && ($title === '' || $slug === '')) {
+if ($status === 'published' && ($title === '' || (!$isHomepage && $slug === ''))) {
     echo json_encode(['error' => __('Published translations require a title and slug')]);
     return;
 }
@@ -88,7 +90,18 @@ try {
         );
         $directoryCollision = function_exists('ct_find_directory_page')
             && ct_find_directory_page($pdo, $slug) !== null;
-        if (in_array($firstSegment, $reservedRoutes, true) || preg_match('/^\d{4}$/', $firstSegment) || $directoryCollision) {
+        $routeReserved = in_array($firstSegment, $reservedRoutes, true)
+            || preg_match('/^\d{4}$/', $firstSegment)
+            || $directoryCollision;
+        $routeReserved = (bool)apply_filters(
+            'content_translation_slug_is_reserved',
+            $routeReserved,
+            $postId,
+            $locale,
+            $slug,
+            $pdo
+        );
+        if ($routeReserved) {
             echo json_encode(['error' => __('Slug uses a reserved public route')]);
             return;
         }
@@ -109,13 +122,21 @@ try {
         }
     }
 
-    $ok = ct_save_translation($pdo, $postId, $locale, [
+    $candidate = [
+        'post_id'          => $postId,
+        'locale'           => $locale,
         'title'            => $title,
         'slug'             => $slug,
         'content'          => (string)($_POST['content'] ?? ''),
         'meta_description' => $metaDescription,
         'status'           => $status,
-    ]);
+    ];
+    if ($status === 'published' && !ct_post_translation_is_complete($pdo, $candidate)) {
+        echo json_encode(['error' => __('Published translation is incomplete')]);
+        return;
+    }
+
+    $ok = ct_save_translation($pdo, $postId, $locale, $candidate);
 
     echo json_encode($ok
         ? ['success' => true, 'message' => __('Translation saved.')]
