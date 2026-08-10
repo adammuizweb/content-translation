@@ -76,7 +76,7 @@ try {
         }
     }
 
-// Ensure translated slug is unique within this locale (excluding this post)
+    // Ensure translated slug is unique within this locale (excluding this post).
     if ($slug !== '') {
         $firstSegment = (string)strtok($slug, '/');
         $reservedRoutes = array_merge(
