@@ -98,8 +98,11 @@ $previewShell = function_exists('theme_section_preview_document_shell')
           $sourceFallback = (array)$section['fallback'];
           $fallback = is_array($translatedSection) ? (array)$translatedSection['fallback'] : ['title' => '', 'summary' => '', 'url' => '', 'link_label' => ''];
           $translatedHtml = is_array($translatedSection) ? (string)$translatedSection['html'] : (string)$section['source_html'];
-          $sourcePreview = $previewShell['before'] . (string)$section['source_html'] . $previewShell['after'];
-          $translatedPreview = $previewShell['before'] . $translatedHtml . $previewShell['after'];
+          $sanitizePreview = static fn(string $html): string => function_exists('theme_section_preview_sanitize_html')
+              ? theme_section_preview_sanitize_html($html)
+              : (preg_replace(['~<script\b[^>]*>.*?</script\s*>~is', '~</?script\b[^>]*>~is'], '', $html) ?? '');
+          $sourcePreview = $previewShell['before'] . $sanitizePreview((string)$section['source_html']) . $previewShell['after'];
+          $translatedPreview = $previewShell['before'] . $sanitizePreview($translatedHtml) . $previewShell['after'];
         ?>
         <article id="ct-package-section-<?= $index ?>" class="ct-package-section<?= $name === $focusSection ? ' ct-package-section--focused' : '' ?>" data-section-index="<?= $index ?>" data-section-name="<?= h($name) ?>">
           <header><span><?= sprintf(__('Section %d'), $index + 1) ?></span><strong><?= h($name) ?></strong><code><?= h(substr((string)$section['source_fingerprint'], 0, 12)) ?></code></header>
@@ -111,7 +114,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
                 <div class="ct-field"><label><?= h($label) ?></label><div class="ct-readonly"><?= nl2br(h((string)($sourceFallback[$field] ?? ''))) ?></div></div>
               <?php endforeach; ?>
               <label class="ct-preview-label"><?= __('Safe source preview') ?></label>
-              <iframe class="ct-section-preview" sandbox="" title="<?= h(__('Source section preview')) ?>" srcdoc="<?= h($sourcePreview) ?>"></iframe>
+              <iframe class="ct-section-preview" sandbox="allow-same-origin" title="<?= h(__('Source section preview')) ?>" srcdoc="<?= h($sourcePreview) ?>"></iframe>
             </section>
             <section class="ct-package-side ct-package-translation">
               <h4><?= __('Translation') ?></h4>
@@ -120,7 +123,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
               <div class="ct-field"><label><?= __('URL') ?></label><input name="sections[<?= $index ?>][url]" value="<?= h((string)$fallback['url']) ?>"></div>
               <div class="ct-field"><label><?= __('Link label') ?></label><input name="sections[<?= $index ?>][link_label]" value="<?= h((string)$fallback['link_label']) ?>"></div>
               <label class="ct-preview-label"><?= __('Safe translated preview') ?></label>
-              <iframe class="ct-section-preview ct-translated-preview" sandbox="" title="<?= h(__('Translated section preview')) ?>" srcdoc="<?= h($translatedPreview) ?>"></iframe>
+              <iframe class="ct-section-preview ct-translated-preview" sandbox="allow-same-origin" title="<?= h(__('Translated section preview')) ?>" srcdoc="<?= h($translatedPreview) ?>"></iframe>
               <details class="ct-advanced-html">
                 <summary><?= __('Advanced translated HTML') ?></summary>
                 <p class="muted"><?= __('Raw bytes are preserved when accepted. Unsafe HTML, URLs, and CSS are rejected on save.') ?></p>
@@ -143,6 +146,11 @@ $previewShell = function_exists('theme_section_preview_document_shell')
   const form = document.getElementById('ct-theme-section-form');
   const previewBefore = <?= json_encode($previewShell['before'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   const previewAfter = <?= json_encode($previewShell['after'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+  const previewDocument = function(html) {
+    const documentPreview = new DOMParser().parseFromString(previewBefore + html + previewAfter, 'text/html');
+    documentPreview.querySelectorAll('script').forEach(function(script){ script.remove(); });
+    return '<!doctype html>' + documentPreview.documentElement.outerHTML;
+  };
   const focusedSection = document.querySelector('.ct-package-section--focused');
   if (focusedSection) window.setTimeout(function(){ focusedSection.scrollIntoView({behavior:'smooth',block:'start'}); }, 120);
   const editors = [];
@@ -153,7 +161,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
       editor.setSize('100%', '320px');
     }
     const preview = textarea.closest('.ct-package-translation').querySelector('.ct-translated-preview');
-    const update = function(){ preview.srcdoc = previewBefore + (editor ? editor.getValue() : textarea.value) + previewAfter; };
+    const update = function(){ preview.srcdoc = previewDocument(editor ? editor.getValue() : textarea.value); };
     if (editor) editor.on('change', update); else textarea.addEventListener('input', update);
     editors.push({textarea:textarea, editor:editor});
   });
