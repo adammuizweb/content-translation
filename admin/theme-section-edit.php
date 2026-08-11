@@ -10,7 +10,10 @@ if (!$pdo instanceof PDO) { echo '<p>' . h(__('Database not available.')) . '</p
 ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
-$listUrl = $base . '/?page=admin/tools/content-translation/theme-sections';
+$overviewUrl = $base . '/?page=admin/tools/content-translation/theme-sections';
+$listUrl = function_exists('adiwira_safe_return_to')
+    ? adiwira_safe_return_to($_GET['return_to'] ?? null, $overviewUrl)
+    : $overviewUrl;
 $saveUrl = $base . '/?page=admin/tools/content-translation/api/theme-section-save&action=api';
 $deleteUrl = $base . '/?page=admin/tools/content-translation/api/delete&action=api';
 $postId = (int)($_GET['post_id'] ?? 0);
@@ -34,6 +37,9 @@ $hasTranslation = $translation !== null;
 $package = $translation ? ct_decode_theme_section_package((string)$translation['content']) : null;
 $packageNames = $package ? array_keys((array)$package['sections']) : [];
 $sourceNames = array_map(static fn(array $section): string => (string)$section['name'], (array)$source['sections']);
+$focusInput = $_GET['section'] ?? '';
+$focusSection = is_scalar($focusInput) ? trim((string)$focusInput) : '';
+if (!in_array($focusSection, $sourceNames, true)) $focusSection = '';
 $identityMatches = $package === null || ($packageNames === $sourceNames && (string)$package['theme_folder'] === (string)$source['theme_folder']);
 $savedFingerprint = ct_theme_section_saved_source_fingerprint($pdo, $postId, $locale);
 $sourceState = ct_theme_section_source_state($savedFingerprint, (string)$source['source_fingerprint']);
@@ -42,6 +48,9 @@ $isHomepage = ct_is_homepage_post($pdo, $postId);
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
 $translation ??= ['title' => '', 'slug' => '', 'meta_description' => '', 'status' => 'draft'];
 $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $postId, $locale));
+$previewShell = function_exists('theme_section_preview_document_shell')
+    ? theme_section_preview_document_shell($pdo, ['locale' => $locale, 'post_id' => $postId, 'theme_folder' => (string)$source['theme_folder']])
+    : ['before' => '', 'after' => ''];
 ?>
 <div class="ct-admin ct-package-editor<?= $isRtl ? ' ct-rtl-editor' : '' ?>" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
   <div class="ct-header">
@@ -59,6 +68,9 @@ $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $pos
     <div class="ct-flash ct-flash-error"><?= __('The existing v1 package has a different theme owner, section identity, or order. It remains untouched; restore the source composition or replace the translation deliberately outside this editor.') ?></div>
   <?php elseif ($package === null && trim((string)($translation['content'] ?? '')) !== ''): ?>
     <div class="ct-flash ct-flash-warning"><?= __('The current translation is plain content, not a valid v1 package. Saving here will replace it with a server-built package.') ?></div>
+  <?php endif; ?>
+  <?php if ($focusSection !== ''): ?>
+    <div class="ct-focus-notice"><?= __('Opened from the source renderer. The matching section is highlighted below:') ?> <code><?= h($focusSection) ?></code></div>
   <?php endif; ?>
 
   <form id="ct-theme-section-form">
@@ -86,8 +98,10 @@ $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $pos
           $sourceFallback = (array)$section['fallback'];
           $fallback = is_array($translatedSection) ? (array)$translatedSection['fallback'] : ['title' => '', 'summary' => '', 'url' => '', 'link_label' => ''];
           $translatedHtml = is_array($translatedSection) ? (string)$translatedSection['html'] : (string)$section['source_html'];
+          $sourcePreview = $previewShell['before'] . (string)$section['source_html'] . $previewShell['after'];
+          $translatedPreview = $previewShell['before'] . $translatedHtml . $previewShell['after'];
         ?>
-        <article class="ct-package-section" data-section-index="<?= $index ?>">
+        <article id="ct-package-section-<?= $index ?>" class="ct-package-section<?= $name === $focusSection ? ' ct-package-section--focused' : '' ?>" data-section-index="<?= $index ?>" data-section-name="<?= h($name) ?>">
           <header><span><?= sprintf(__('Section %d'), $index + 1) ?></span><strong><?= h($name) ?></strong><code><?= h(substr((string)$section['source_fingerprint'], 0, 12)) ?></code></header>
           <input type="hidden" name="sections[<?= $index ?>][name]" value="<?= h($name) ?>">
           <div class="ct-package-columns">
@@ -97,7 +111,7 @@ $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $pos
                 <div class="ct-field"><label><?= h($label) ?></label><div class="ct-readonly"><?= nl2br(h((string)($sourceFallback[$field] ?? ''))) ?></div></div>
               <?php endforeach; ?>
               <label class="ct-preview-label"><?= __('Safe source preview') ?></label>
-              <iframe class="ct-section-preview" sandbox="" title="<?= h(__('Source section preview')) ?>" srcdoc="<?= h((string)$section['source_html']) ?>"></iframe>
+              <iframe class="ct-section-preview" sandbox="" title="<?= h(__('Source section preview')) ?>" srcdoc="<?= h($sourcePreview) ?>"></iframe>
             </section>
             <section class="ct-package-side ct-package-translation">
               <h4><?= __('Translation') ?></h4>
@@ -106,7 +120,7 @@ $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $pos
               <div class="ct-field"><label><?= __('URL') ?></label><input name="sections[<?= $index ?>][url]" value="<?= h((string)$fallback['url']) ?>"></div>
               <div class="ct-field"><label><?= __('Link label') ?></label><input name="sections[<?= $index ?>][link_label]" value="<?= h((string)$fallback['link_label']) ?>"></div>
               <label class="ct-preview-label"><?= __('Safe translated preview') ?></label>
-              <iframe class="ct-section-preview ct-translated-preview" sandbox="" title="<?= h(__('Translated section preview')) ?>" srcdoc="<?= h($translatedHtml) ?>"></iframe>
+              <iframe class="ct-section-preview ct-translated-preview" sandbox="" title="<?= h(__('Translated section preview')) ?>" srcdoc="<?= h($translatedPreview) ?>"></iframe>
               <details class="ct-advanced-html">
                 <summary><?= __('Advanced translated HTML') ?></summary>
                 <p class="muted"><?= __('Raw bytes are preserved when accepted. Unsafe HTML, URLs, and CSS are rejected on save.') ?></p>
@@ -127,6 +141,10 @@ $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $pos
 <script>
 (function(){
   const form = document.getElementById('ct-theme-section-form');
+  const previewBefore = <?= json_encode($previewShell['before'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+  const previewAfter = <?= json_encode($previewShell['after'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+  const focusedSection = document.querySelector('.ct-package-section--focused');
+  if (focusedSection) window.setTimeout(function(){ focusedSection.scrollIntoView({behavior:'smooth',block:'start'}); }, 120);
   const editors = [];
   form.querySelectorAll('.ct-section-html').forEach(function(textarea){
     let editor = null;
@@ -135,7 +153,7 @@ $translationState = ct_translation_row_state_token(ct_get_translation($pdo, $pos
       editor.setSize('100%', '320px');
     }
     const preview = textarea.closest('.ct-package-translation').querySelector('.ct-translated-preview');
-    const update = function(){ preview.srcdoc = editor ? editor.getValue() : textarea.value; };
+    const update = function(){ preview.srcdoc = previewBefore + (editor ? editor.getValue() : textarea.value) + previewAfter; };
     if (editor) editor.on('change', update); else textarea.addEventListener('input', update);
     editors.push({textarea:textarea, editor:editor});
   });

@@ -29,7 +29,7 @@ foreach ([
 ] as $route) {
     $check(isset($routes[$route]) && ($routes[$route]['roles'] ?? []) === ['admin'], $route . ' is manifest-admin-only');
 }
-$check(str_contains($source['hub'], "'/shortcodes'") && str_contains($source['hub'], "__('Shortcodes')"), 'Content Translation hub exposes a Shortcodes resource card');
+$check(str_contains($source['hub'], "admin/shortcodes/index&tab=presets") && str_contains($source['hub'], "__('Shortcode Presets')"), 'Content Translation hub starts from the Core Shortcode Presets source list');
 $check(str_contains($source['list'], '$perPage = 20') && str_contains($source['list'], '$totalPages'), 'preset resource list has exact 20-row pagination');
 $check(str_contains($source['list'], "LIKE :search ESCAPE '!'") && str_contains($source['list'], 'ct_shortcode_preset_like_pattern'), 'preset resource search is bounded, parameterized, and uses a SQL-mode-neutral LIKE escape');
 $check(str_contains($source['list'], 'ct_shortcode_preset_translation_statuses') && str_contains($source['list'], 'ct-preset-locale'), 'preset resource list exposes per-locale statuses as direct controls');
@@ -43,6 +43,7 @@ $check(substr_count($source['resource'], 'hash_equals($loadedSourceState') === 2
 $check(str_contains($source['resource'], "return ['kicker']") && str_contains($source['resource'], "\$config['kicker'] = \$kicker"), 'runtime override allowlist contains only kicker');
 $check(!str_contains($source['resource'], "\$config['layout'] =") && !str_contains($source['resource'], "\$config['limit'] ="), 'runtime cannot assign structural layout or query keys');
 $check(str_contains($source['resource'], "shortcode_preset_editor_fields") && str_contains($source['resource'], 'ct-preset-translation-locale') && str_contains($source['resource'], 'Open translation'), 'Core preset editor visibly exposes source kicker and locale launcher');
+$check(str_contains($source['resource'], "return_to=") && str_contains($source['editor'], 'adiwira_safe_return_to'), 'preset translation flow returns safely to the source preset editor');
 $check(str_contains($source['editor'], 'Fetched Posts or Pages are translated through their existing Content Translation resources'), 'editor explains no-source-kicker content translation behavior');
 $check(str_contains($source['resource'], "admin_shortcode_preset_before_delete") && !str_contains($source['resource'], "admin_shortcode_preset_after_delete") && str_contains($source['resource'], 'DELETE FROM shortcode_preset_translations WHERE preset_id = ?'), 'failure-propagating Core pre-delete hook cleans plugin-owned translations');
 $check(str_contains($source['helpers'], 'CREATE TABLE IF NOT EXISTS shortcode_preset_translations') && str_contains($source['helpers'], 'UNIQUE KEY uniq_shortcode_preset_locale (preset_id, locale)'), 'plugin schema is idempotent and unique by preset and locale');
@@ -55,7 +56,7 @@ $check(str_contains($source['list'], '$translatedTitle') && str_contains($source
 $check(str_contains($source['editor'], 'id="ct-shortcode-delete"') && str_contains($source['editor'], 'hidden = false'), 'delete becomes available after the first AJAX create');
 $check(str_contains($source['editor'], 'NewNotifConfirm.danger') && !str_contains($source['editor'], 'window.confirm'), 'preset editor uses NewNotifConfirm without a native confirm fallback');
 $check(str_contains($source['editor'], 'aria-live="polite"') && str_contains($source['editor'], 'Confirmation dialog is unavailable'), 'missing confirmation UI fails closed with an accessible visible notification');
-$check(str_contains($source['editor'], '&notice=translation_deleted') && str_contains($source['list'], "'translation_deleted' => __('Translation deleted.')") && !str_contains($source['list'], "\$_GET['flash']"), 'successful deletion redirects to an allowlisted accessible list notice');
+$check(str_contains($source['editor'], "\$deleteReturnUrl") && str_contains($source['list'], "'translation_deleted' => __('Translation deleted.')") && !str_contains($source['list'], "\$_GET['flash']"), 'successful deletion returns to the source editor or an allowlisted accessible overview notice');
 $check(str_contains($source['resource'], 'ct_ui_translation_seeds') && str_contains($source['resource'], 'AND value = ?'), 'owned seed updates preserve user-edited translation values');
 $check(str_contains($source['resource'], 'DELETE FROM ui_translations WHERE scope = ? AND source = ? AND locale = ? AND value = ?') && str_contains($source['resource'], 'DELETE FROM ct_ui_translation_seeds WHERE scope = ? AND source_hash = ? AND locale = ?'), 'reseed prunes obsolete ownership and only matching owned UI values');
 $check(str_contains($source['uninstall'], 'INNER JOIN ct_ui_translation_seeds') && str_contains($source['uninstall'], 'owned.value = ui.value'), 'uninstall deletes only unmodified plugin-owned UI seed rows');

@@ -15,7 +15,11 @@ if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin'
 ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
-$listUrl = $base . '/?page=admin/tools/content-translation/shortcodes';
+$overviewUrl = $base . '/?page=admin/tools/content-translation/shortcodes';
+$listUrl = function_exists('adiwira_safe_return_to')
+    ? adiwira_safe_return_to($_GET['return_to'] ?? null, $overviewUrl)
+    : $overviewUrl;
+$deleteReturnUrl = $listUrl === $overviewUrl ? $overviewUrl . '&notice=translation_deleted' : $listUrl;
 $saveUrl = $base . '/?page=admin/tools/content-translation/api/shortcode-save&action=api';
 $presetInput = $_GET['preset_id'] ?? '0';
 $presetId = is_scalar($presetInput) ? (int)$presetInput : 0;
@@ -165,7 +169,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
     try {
       const data = await submit(body);
       if (!data.success) return notify('error', data.error || <?= json_encode(__('Delete failed.')) ?>);
-      window.location.href = <?= json_encode($listUrl . '&notice=translation_deleted') ?>;
+      window.location.href = <?= json_encode($deleteReturnUrl) ?>;
     } catch (error) { notify('error', <?= json_encode(__('Network error.')) ?>); }
   });
 })();

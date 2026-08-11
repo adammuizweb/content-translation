@@ -392,6 +392,16 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'Preset kicker must not exceed 255 characters.' => ['Kicker preset tidak boleh melebihi 255 karakter.', 'Der Preset-Kicker darf 255 Zeichen nicht überschreiten.'],
             'Preset kicker contains unsupported control characters.' => ['Kicker preset berisi karakter kontrol yang tidak didukung.', 'Der Preset-Kicker enthält nicht unterstützte Steuerzeichen.'],
             'Shortcode Presets' => ['Preset Shortcode', 'Shortcode-Presets'],
+            'Open a source preset, then choose a language beside its heading settings. Query and layout configuration stay shared.' => ['Buka preset sumber, lalu pilih bahasa di samping pengaturan judulnya. Konfigurasi kueri dan tata letak tetap digunakan bersama.', 'Öffnen Sie ein Quell-Preset und wählen Sie neben den Überschriftseinstellungen eine Sprache. Abfrage und Layout bleiben gemeinsam.'],
+            'Open Shortcode Presets' => ['Buka Preset Shortcode', 'Shortcode-Presets öffnen'],
+            'Shortcode Preset Translation Overview' => ['Ringkasan Terjemahan Preset Shortcode', 'Übersicht der Shortcode-Preset-Übersetzungen'],
+            'This page is a status overview. The primary workflow starts by opening the source preset and choosing a translation language there.' => ['Halaman ini adalah ringkasan status. Alur utama dimulai dengan membuka preset sumber dan memilih bahasa terjemahan di sana.', 'Diese Seite ist eine Statusübersicht. Der primäre Ablauf beginnt beim Quell-Preset, wo die Übersetzungssprache gewählt wird.'],
+            'Translations belong to each Theme Template that uses this renderer. PHP remains the shared source for every language.' => ['Terjemahan dimiliki oleh setiap Theme Template yang memakai renderer ini. PHP tetap menjadi sumber bersama untuk semua bahasa.', 'Übersetzungen gehören zu jeder Theme-Vorlage, die diesen Renderer verwendet. PHP bleibt die gemeinsame Quelle für alle Sprachen.'],
+            'Theme Template usage could not be loaded.' => ['Pemakaian Theme Template tidak dapat dimuat.', 'Die Verwendung in Theme-Vorlagen konnte nicht geladen werden.'],
+            'This renderer is not used by a package-composed Theme Template, so it has no translation target yet.' => ['Renderer ini belum dipakai oleh Theme Template berbasis paket, sehingga belum memiliki target terjemahan.', 'Dieser Renderer wird noch von keiner paketbasierten Theme-Vorlage verwendet und hat daher noch kein Übersetzungsziel.'],
+            'Used by Theme Template' => ['Dipakai oleh Theme Template', 'Verwendet von Theme-Vorlage'],
+            'Unavailable' => ['Tidak tersedia', 'Nicht verfügbar'],
+            'Opened from the source renderer. The matching section is highlighted below:' => ['Dibuka dari renderer sumber. Section yang sesuai disorot di bawah:', 'Vom Quell-Renderer geöffnet. Der passende Abschnitt ist unten hervorgehoben:'],
             'Shortcodes' => ['Shortcode', 'Shortcodes'],
             'Translate Shortcode Presets' => ['Terjemahkan Preset Shortcode', 'Shortcode-Presets übersetzen'],
             'Edit Shortcode Preset Translation' => ['Edit Terjemahan Preset Shortcode', 'Shortcode-Preset-Übersetzung bearbeiten'],
@@ -564,6 +574,7 @@ add_action('shortcode_preset_editor_fields', function ($config, $preset, $pdo, $
     if ($presetId > 0) {
         $translations = ct_shortcode_preset_translations($pdo, $presetId);
         $locales = ct_enabled_locales($pdo);
+        $sourceEditorUrl = $base . '/?page=admin/shortcodes/edit&id=' . $presetId;
         echo '<div class="ct-editor-translation-control" style="max-width:none;margin-bottom:0"><label for="ct-preset-translation-locale">' . htmlspecialchars(__('Translations'), ENT_QUOTES, 'UTF-8') . '</label>';
         echo '<div class="ct-preset-picker"><select id="ct-preset-translation-locale"><option value="">' . htmlspecialchars(__('Choose translation language…'), ENT_QUOTES, 'UTF-8') . '</option>';
         foreach ($locales as $locale) {
@@ -571,7 +582,7 @@ add_action('shortcode_preset_editor_fields', function ($config, $preset, $pdo, $
             $status = (string)($translation['status'] ?? '');
             $action = $translation ? ($status === 'draft' ? __('Draft') : __('Edit')) : __('Add');
             $title = trim((string)($translation['title'] ?? ''));
-            $url = $base . '/?page=admin/tools/content-translation/shortcode-edit&preset_id=' . $presetId . '&locale=' . rawurlencode($locale);
+            $url = $base . '/?page=admin/tools/content-translation/shortcode-edit&preset_id=' . $presetId . '&locale=' . rawurlencode($locale) . '&return_to=' . rawurlencode($sourceEditorUrl);
             $label = strtoupper($locale) . ' - ' . ($title !== '' ? $title . ' - ' : '') . $action;
             echo '<option value="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
         }

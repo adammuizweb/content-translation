@@ -12,6 +12,7 @@ $sources = [
     'helpers' => (string)file_get_contents($root . '/includes/helpers.php'),
     'admin' => (string)file_get_contents($root . '/includes/admin.php'),
     'list' => (string)file_get_contents($root . '/admin/theme-sections.php'),
+    'editor' => (string)file_get_contents($root . '/admin/theme-section-edit.php'),
 ];
 $failures = [];
 $check = static function (bool $condition, string $message) use (&$failures): void {
@@ -36,6 +37,10 @@ $check(str_contains($sources['generic_save'], 'ct_save_translation_locked') && s
 $check(str_contains($sources['generic_save'], 'Use the Theme Section editor'), 'generic save rejects package-composed source templates');
 $check(str_contains($sources['generic_edit'], 'theme-section-edit') && str_contains($sources['generic_edit'], 'Location:'), 'generic editor redirects package-composed source templates');
 $check(str_contains($sources['admin'], "current_user_role(\$pdo) !== 'admin'"), 'Core editor translation controls are hidden from non-admin roles');
+$check(str_contains($sources['admin'], "shortcode_layout_editor_after_header") && str_contains($sources['admin'], 'ct_theme_section_template_usages'), 'source renderer editor exposes contextual Theme Template translation controls');
+$check(str_contains($sources['packages'], 'function ct_theme_section_template_usages') && str_contains($sources['packages'], "LOCATE('widget:theme_section'"), 'renderer usage lookup parses bounded package-composed Theme Templates');
+$check(str_contains($sources['editor'], "\$_GET['section']") && str_contains($sources['editor'], 'ct-package-section--focused') && str_contains($sources['editor'], "adiwira_safe_return_to"), 'package editor focuses the requested section and returns safely to its source renderer');
+$check(str_contains($sources['editor'], 'theme_section_preview_document_shell') && str_contains($sources['editor'], 'previewBefore +') && substr_count($sources['editor'], 'sandbox=""') >= 2, 'source and translated previews reuse the sandboxed Core theme-asset document shell');
 $check(substr_count($sources['packages'], 'FOR UPDATE') >= 2 && str_contains($sources['packages'], 'beginTransaction()'), 'package save uses a transaction and source/translation row locks');
 $check(str_contains($sources['packages'], 'loadedSourceFingerprint') && str_contains($sources['packages'], 'loadedTranslationState'), 'package save checks source and translation optimistic locks');
 $check(str_contains($sources['packages'], 'existing package identity or order no longer matches'), 'package save enforces existing v1 identity and order server-side');

@@ -4,12 +4,13 @@ Content Translation `1.11.0` requires Jyavani Core `2.3.58` or newer for the
 Shortcode Preset lifecycle, render-time, and preview contracts.
 
 Content Translation provides an admin-only translation resource for Core
-Shortcode Presets. Open **Tools / Content Translation / Shortcodes** to search
-and page through live presets, inspect each locale state, and open the add/edit
-control for that locale directly.
+Shortcode Presets. The primary workflow starts at Core's **Shortcode Presets**
+list: open the source preset, then choose a locale beside its heading settings.
+The translation editor returns to that source preset. **Tools / Content
+Translation / Shortcodes** remains available only as a status overview.
 
-The same locale launcher appears in Core's Shortcode Preset editor. The plugin
-also adds an admin-only **Source heading behavior** control there. It maps
+The plugin also adds an admin-only **Source heading behavior** control to the
+Core preset editor. It maps
 Core's three distinct states without collapsing them:
 
 - **Automatic category heading** removes the `kicker` key, allowing Core to use

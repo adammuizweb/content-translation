@@ -90,6 +90,30 @@ if (!function_exists('ct_theme_section_package_format')) {
         return $sections !== [] ? $sections : null;
     }
 
+    function ct_theme_section_template_usages(PDO $pdo, string $sectionName): array {
+        if (!function_exists('theme_section_name_is_valid') || !theme_section_name_is_valid($sectionName)) return [];
+        $usages = [];
+        $cursor = PHP_INT_MAX;
+        $batchSize = 250;
+        do {
+            $stmt = $pdo->prepare("SELECT id, type, title, slug, content, status, updated_at FROM posts WHERE type = 'theme' AND is_deleted = 0 AND LOCATE('widget:theme_section', content) > 0 AND id < ? ORDER BY id DESC LIMIT {$batchSize}");
+            $stmt->execute([$cursor]);
+            $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($posts as $post) {
+                $composition = ct_parse_theme_section_composition((string)$post['content']);
+                if ($composition === null) continue;
+                foreach ($composition as $index => $section) {
+                    if ((string)$section['name'] !== $sectionName) continue;
+                    $post['section_index'] = $index;
+                    $usages[] = $post;
+                    break;
+                }
+            }
+            if ($posts !== []) $cursor = (int)$posts[count($posts) - 1]['id'];
+        } while (count($posts) === $batchSize);
+        return $usages;
+    }
+
     function ct_theme_section_url_is_safe(string $url): bool {
         $decoded = $url;
         for ($i = 0; $i < 3; $i++) {

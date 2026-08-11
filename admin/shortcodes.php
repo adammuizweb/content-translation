@@ -18,6 +18,7 @@ $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $hubUrl = $base . '/?page=admin/tools/content-translation';
 $selfUrl = $base . '/?page=admin/tools/content-translation/shortcodes';
 $editUrl = $base . '/?page=admin/tools/content-translation/shortcode-edit';
+$sourceEditUrl = $base . '/?page=admin/shortcodes/edit';
 $repairUrl = $base . '/?page=admin/tools/content-translation/api/shortcode-save&action=api';
 $settingsUrl = $base . '/?page=admin/tools/content-translation/settings';
 $noticeInput = $_GET['notice'] ?? '';
@@ -69,8 +70,8 @@ $sourceConfig = static function (array $preset) use ($pdo): array {
 <div class="ct-admin">
   <div class="ct-header">
     <div>
-      <h2><?= __('Shortcode Presets') ?></h2>
-      <p class="muted"><?= __('Translate preset management titles and the optional kicker shown above fetched content. Query and layout settings always remain source-controlled.') ?></p>
+      <h2><?= __('Shortcode Preset Translation Overview') ?></h2>
+      <p class="muted"><?= __('This page is a status overview. The primary workflow starts by opening the source preset and choosing a translation language there.') ?></p>
     </div>
     <a class="btn" href="<?= h($hubUrl) ?>"><?= __('Back') ?></a>
   </div>
@@ -107,7 +108,7 @@ $sourceConfig = static function (array $preset) use ($pdo): array {
             $sourceKicker = $sourceMode === 'custom' && is_scalar($config['kicker'] ?? null) ? trim((string)$config['kicker']) : '';
           ?>
           <tr>
-            <td><strong><?= h((string)$preset['title']) ?></strong><br><code>[[widget:<?= h((string)$preset['slug']) ?>]]</code></td>
+            <td><a href="<?= h($sourceEditUrl . '&id=' . (int)$preset['id']) ?>"><strong><?= h((string)$preset['title']) ?></strong></a><br><code>[[widget:<?= h((string)$preset['slug']) ?>]]</code></td>
             <td>
               <?php if ($sourceMode === 'custom'): ?><?= h($sourceKicker) ?>
               <?php elseif ($sourceMode === 'hidden'): ?><span class="muted"><?= __('Hidden') ?></span>

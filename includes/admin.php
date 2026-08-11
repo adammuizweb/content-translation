@@ -85,6 +85,88 @@ add_action('theme_editor_before_content', function ($theme, $pdo) {
     ct_render_editor_translation_picker($theme, $pdo);
 }, 10, 2);
 
+add_action('shortcode_layout_editor_after_header', function ($context, $pdo): void {
+    if (!is_array($context) || !$pdo instanceof PDO
+        || ($context['scope'] ?? '') !== 'section' || !empty($context['is_new'])
+        || !function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+        return;
+    }
+    $sectionName = is_string($context['name'] ?? null) ? trim($context['name']) : '';
+    if (!function_exists('theme_section_name_is_valid') || !theme_section_name_is_valid($sectionName)) return;
+
+    $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
+    $editorUrl = is_string($context['editor_url'] ?? null) ? $context['editor_url'] : '';
+    $locales = ct_enabled_locales($pdo);
+    try {
+        $usages = ct_theme_section_template_usages($pdo, $sectionName);
+    } catch (Throwable $error) {
+        error_log('[content-translation] Theme Section usage lookup failed: ' . $error->getMessage());
+        $usages = null;
+    }
+
+    echo '<section class="ct-layout-translation-panel">';
+    echo '<div class="ct-layout-translation-heading"><div><strong>' . htmlspecialchars(__('Translations'), ENT_QUOTES, 'UTF-8') . '</strong>';
+    echo '<span>' . htmlspecialchars(__('Translations belong to each Theme Template that uses this renderer. PHP remains the shared source for every language.'), ENT_QUOTES, 'UTF-8') . '</span></div>';
+    echo '<code>' . htmlspecialchars($sectionName, ENT_QUOTES, 'UTF-8') . '</code></div>';
+    if ($usages === null) {
+        echo '<p class="ct-layout-translation-empty">' . htmlspecialchars(__('Theme Template usage could not be loaded.'), ENT_QUOTES, 'UTF-8') . '</p></section>';
+        return;
+    }
+    if ($usages === []) {
+        echo '<p class="ct-layout-translation-empty">' . htmlspecialchars(__('This renderer is not used by a package-composed Theme Template, so it has no translation target yet.'), ENT_QUOTES, 'UTF-8') . '</p></section>';
+        return;
+    }
+    if ($locales === []) {
+        echo '<p class="ct-layout-translation-empty">' . htmlspecialchars(__('No translation locales enabled.'), ENT_QUOTES, 'UTF-8') . '</p></section>';
+        return;
+    }
+
+    echo '<div class="ct-layout-translation-usages">';
+    foreach ($usages as $usage) {
+        $postId = (int)$usage['id'];
+        $resource = ct_theme_section_source_resource($pdo, $usage, false);
+        $translations = ct_translations_for_post($pdo, $postId);
+        $sourceUrl = $base . '/?page=admin/themes/edit&id=' . $postId;
+        echo '<article class="ct-layout-translation-usage"><div class="ct-layout-translation-template">';
+        echo '<span>' . htmlspecialchars(__('Used by Theme Template'), ENT_QUOTES, 'UTF-8') . '</span>';
+        echo '<a href="' . htmlspecialchars($sourceUrl, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars((string)$usage['title'], ENT_QUOTES, 'UTF-8') . '</a>';
+        echo '<code>' . htmlspecialchars((string)$usage['slug'], ENT_QUOTES, 'UTF-8') . '</code></div>';
+        echo '<div class="ct-layout-translation-locales">';
+        foreach ($locales as $locale) {
+            $translation = $translations[$locale] ?? null;
+            $package = $translation ? ct_decode_theme_section_package((string)($translation['content'] ?? '')) : null;
+            $packageHasSection = is_array($package) && $resource !== null
+                && (string)($package['theme_folder'] ?? '') === (string)$resource['theme_folder']
+                && isset($package['sections'][$sectionName]);
+            $status = !$translation ? 'empty' : (!$packageHasSection ? 'incomplete' : ((string)($translation['status'] ?? 'draft') === 'published' ? 'published' : 'draft'));
+            $label = $status === 'empty' ? __('Add') : ($status === 'incomplete' ? __('Incomplete') : __($status === 'published' ? 'Published' : 'Draft'));
+            $sourceState = '';
+            if ($translation && $resource !== null) {
+                $saved = ct_theme_section_saved_source_fingerprint($pdo, $postId, $locale);
+                $sourceState = ct_theme_section_source_state($saved, (string)$resource['source_fingerprint']);
+                if ($sourceState === 'stale') $label .= ' / ' . __('Stale source');
+                elseif ($sourceState === 'unverified') $label .= ' / ' . __('Unverified source');
+            }
+            $query = [
+                'page' => 'admin/tools/content-translation/theme-section-edit',
+                'post_id' => $postId,
+                'locale' => $locale,
+                'section' => $sectionName,
+            ];
+            if ($editorUrl !== '') $query['return_to'] = $editorUrl;
+            $url = $base . '/?' . http_build_query($query);
+            $class = 'ct-layout-locale ct-layout-locale--' . $status;
+            if ($resource === null) {
+                echo '<span class="' . $class . '" aria-disabled="true"><b>' . htmlspecialchars(strtoupper($locale), ENT_QUOTES, 'UTF-8') . '</b><small>' . htmlspecialchars(__('Unavailable'), ENT_QUOTES, 'UTF-8') . '</small></span>';
+            } else {
+                echo '<a class="' . $class . '" href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '"><b>' . htmlspecialchars(strtoupper($locale), ENT_QUOTES, 'UTF-8') . '</b><small>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</small></a>';
+            }
+        }
+        echo '</div></article>';
+    }
+    echo '</div></section>';
+}, 10, 2);
+
 add_action('category_editor_after_fields', function ($category, $pdo) {
     if (!is_array($category) || !$pdo instanceof PDO) return;
     if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;

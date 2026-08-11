@@ -100,6 +100,29 @@
 .ct-preset-locale--draft { border-color: rgba(241,196,15,.55); background: rgba(241,196,15,.11); }
 .ct-preset-locale--incomplete { border-color: rgba(231,76,60,.55); background: rgba(231,76,60,.1); }
 
+.ct-layout-translation-panel { display:grid; gap:.8rem; padding:.9rem 1rem; border:1px solid color-mix(in srgb,var(--adam-primary,#2563eb) 30%,var(--adam-border,rgba(127,127,127,.25))); border-left:4px solid var(--adam-primary,#2563eb); border-radius:10px; background:color-mix(in srgb,var(--adam-primary,#2563eb) 6%,var(--adam-card,transparent)); }
+.ct-layout-translation-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.ct-layout-translation-heading > div { display:grid; gap:.2rem; }
+.ct-layout-translation-heading strong { font-size:.95rem; }
+.ct-layout-translation-heading span { color:var(--adam-muted,inherit); font-size:.8rem; line-height:1.45; }
+.ct-layout-translation-heading code { flex:none; font-size:.75rem; }
+.ct-layout-translation-usages { display:grid; gap:.55rem; }
+.ct-layout-translation-usage { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.65rem .75rem; border:1px solid var(--adam-border,rgba(127,127,127,.22)); border-radius:8px; background:var(--adam-card,transparent); }
+.ct-layout-translation-template { display:grid; min-width:0; gap:.12rem; }
+.ct-layout-translation-template > span { color:var(--adam-muted,inherit); font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; }
+.ct-layout-translation-template > a { color:inherit; font-weight:700; text-decoration:none; }
+.ct-layout-translation-template > a:hover { color:var(--adam-primary,#2563eb); }
+.ct-layout-translation-template code { width:max-content; max-width:100%; overflow:hidden; text-overflow:ellipsis; font-size:.72rem; }
+.ct-layout-translation-locales { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.4rem; }
+.ct-layout-locale { display:flex; align-items:center; gap:.45rem; min-width:92px; padding:.38rem .55rem; border:1px solid rgba(127,127,127,.35); border-radius:7px; color:inherit; text-decoration:none; }
+.ct-layout-locale b { font:800 .74rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.ct-layout-locale small { font-size:.7rem; line-height:1.2; }
+.ct-layout-locale--published { border-color:rgba(46,204,113,.55); background:rgba(46,204,113,.12); }
+.ct-layout-locale--draft { border-color:rgba(241,196,15,.55); background:rgba(241,196,15,.11); }
+.ct-layout-locale--incomplete { border-color:rgba(231,76,60,.55); background:rgba(231,76,60,.1); }
+.ct-layout-locale[aria-disabled="true"] { opacity:.55; }
+.ct-layout-translation-empty { margin:0; color:var(--adam-muted,inherit); font-size:.82rem; }
+
 .ct-status {
   display: inline-block;
   padding: .2rem .65rem;
@@ -301,6 +324,8 @@
 .ct-package-field-wide { grid-column:span 2; }
 .ct-package-sections { display:grid; gap:1.25rem; }
 .ct-package-section { overflow:hidden; border:1px solid var(--adam-border,rgba(127,127,127,.25)); border-radius:12px; background:var(--adam-card,transparent); }
+.ct-package-section--focused { border-color:var(--adam-primary,#2563eb); box-shadow:0 0 0 3px color-mix(in srgb,var(--adam-primary,#2563eb) 18%,transparent); scroll-margin-top:1rem; }
+.ct-focus-notice { margin-bottom:1rem; padding:.7rem .9rem; border:1px solid color-mix(in srgb,var(--adam-primary,#2563eb) 38%,transparent); border-radius:8px; background:color-mix(in srgb,var(--adam-primary,#2563eb) 9%,transparent); font-size:.84rem; }
 .ct-package-section > header { display:flex; align-items:center; gap:.7rem; padding:.75rem 1rem; border-bottom:1px solid var(--adam-border,rgba(127,127,127,.25)); background:color-mix(in srgb,var(--adam-primary,#2563eb) 7%,transparent); }
 .ct-package-section > header span { color:var(--adam-muted,inherit); font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
 .ct-package-section > header code { margin-left:auto; color:var(--adam-muted,inherit); font-size:.72rem; }
@@ -389,6 +414,9 @@
   .ct-package-section > header code { width:100%; margin-left:0; }
   .ct-preset-picker { align-items: stretch; flex-direction: column; }
   .ct-preset-picker .btn { text-align: center; }
+  .ct-layout-translation-heading,
+  .ct-layout-translation-usage { align-items:stretch; flex-direction:column; }
+  .ct-layout-translation-locales { justify-content:flex-start; }
 }
 
 /* Frontend language switcher widget */

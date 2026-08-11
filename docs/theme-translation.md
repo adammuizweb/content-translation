@@ -71,9 +71,13 @@ localized canonical URL is `/{locale}/`. Canonical Core content routes may be
 used instead of a translated slug when they resolve to the same post and locale.
 Version 1.10 provides an admin-only package editor at **Tools / Content
 Translation / Theme Sections**. Package-composed Theme Templates are listed
-there instead of under Theme Partials. Opening the generic translation editor
-for one redirects to the package editor; templates containing plain HTML,
-ordinary shortcodes, or mixed content continue to use the generic editor.
+there instead of under Theme Partials. The Core Theme Section renderer editor
+also shows every Theme Template that uses the current renderer, with direct
+per-locale links into the package editor. Those links focus the matching section
+and return to the source renderer. Opening the generic translation editor for a
+package-composed template redirects to the package editor; templates containing
+plain HTML, ordinary shortcodes, or mixed content continue to use the generic
+editor.
 
 ## Theme Section editor contract
 
@@ -88,7 +92,9 @@ For each section the editor obtains Core's registered definition,
 `theme_section_source_descriptor()`, and
 `theme_section_source_fingerprint()`. It renders the source with the source post
 in the render context. Source and translated rendering are displayed in
-sandboxed preview frames. The translated controls expose semantic title,
+sandboxed preview frames that load the active theme's declared styles. Theme
+JavaScript remains disabled, so the preview is visual rather than interactive.
+The translated controls expose semantic title,
 summary, URL, and link label fields plus an advanced raw HTML CodeMirror field.
 The source section identities and order are read-only.
 
