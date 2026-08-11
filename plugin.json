@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "title": "Content Translation",
   "description": "Reviewed translations for posts, pages, Shortcode Presets, Theme Section packages, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
   "author": "Adam Muiz",
@@ -14,7 +14,7 @@
   },
   "icon": "icon.png",
   "requires": {
-    "jyavani": ">=2.3.58",
+    "jyavani": ">=2.3.59",
     "php": ">=8.1",
     "extensions": ["pdo", "json"]
   },
@@ -161,7 +161,7 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.11.0"],
+    "css": ["/static/plugins/content-translation/content-translation.css?v=1.12.0"],
     "js": []
   }
 }

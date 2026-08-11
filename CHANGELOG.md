@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.12.0 - 2026-08-11
 
 - Start Shortcode Preset translations from the Core source editor and retain the standalone page as a status overview.
 - Add per-Theme-Template locale controls to the Core Theme Section renderer editor.
 - Focus the selected section in the package editor and return to its source renderer.
 - Load active-theme styles in sandboxed source and translated section previews.
+- Keep preview scripts disabled while allowing same-origin theme fonts and removing script elements from preview documents.
 
 ## 1.11.0 - 2026-08-11
 
