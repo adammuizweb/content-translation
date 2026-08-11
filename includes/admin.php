@@ -8,6 +8,7 @@ add_action('admin_init', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
     if ($pdo instanceof PDO) {
         ct_ensure_schema($pdo);
+        ct_seed_shortcode_preset_ui_translations($pdo);
     }
 });
 

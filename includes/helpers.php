@@ -5,10 +5,20 @@ declare(strict_types=1);
 
 if (!function_exists('ct_ensure_schema')) {
 
-    function ct_ensure_schema(PDO $pdo): void {
-        static $done = false;
-        if ($done) return;
-        $done = true;
+    function ct_schema_error(PDO $pdo): ?string {
+        $error = $GLOBALS['_ct_schema_errors'][spl_object_id($pdo)] ?? null;
+        return is_string($error) && $error !== '' ? $error : null;
+    }
+
+    function ct_report_schema_error(PDO $pdo, Throwable $error): void {
+        $GLOBALS['_ct_schema_errors'][spl_object_id($pdo)] = $error->getMessage();
+        error_log('[content-translation] storage error: ' . $error->getMessage());
+    }
+
+    function ct_ensure_schema(PDO $pdo): bool {
+        static $done = [];
+        $connectionId = spl_object_id($pdo);
+        if (isset($done[$connectionId])) return true;
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS post_translations (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -99,6 +109,26 @@ if (!function_exists('ct_ensure_schema')) {
                 UNIQUE KEY uniq_ct_section_meta (post_id, locale),
                 KEY idx_ct_section_source (source_fingerprint)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS shortcode_preset_translations (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                preset_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(16) NOT NULL,
+                title VARCHAR(191) NOT NULL DEFAULT '',
+                overrides_json TEXT NOT NULL,
+                status ENUM('draft','published') NOT NULL DEFAULT 'draft',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_shortcode_preset_locale (preset_id, locale),
+                KEY idx_shortcode_preset_locale_status (locale, status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS ct_ui_translation_seeds (
+                scope VARCHAR(50) NOT NULL,
+                source_hash CHAR(64) NOT NULL,
+                source TEXT NOT NULL,
+                locale VARCHAR(16) NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (scope, source_hash, locale)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             foreach ([
                 'post_translations',
                 'site_translations',
@@ -108,11 +138,16 @@ if (!function_exists('ct_ensure_schema')) {
                 'author_profile_translations',
                 'theme_file_translations',
                 'ct_theme_section_translation_meta',
+                'shortcode_preset_translations',
             ] as $table) {
                 ct_expand_locale_column($pdo, $table);
             }
+            $done[$connectionId] = true;
+            unset($GLOBALS['_ct_schema_errors'][$connectionId]);
+            return true;
         } catch (Throwable $e) {
-            error_log('[content-translation] schema error: ' . $e->getMessage());
+            ct_report_schema_error($pdo, $e);
+            return false;
         }
     }
 
@@ -238,6 +273,7 @@ if (!function_exists('ct_ensure_schema')) {
             'site_translations' => 'SELECT * FROM site_translations ORDER BY locale',
             'theme_file_translations' => 'SELECT * FROM theme_file_translations ORDER BY theme_folder, slot_key, locale',
             'theme_section_translation_metadata' => 'SELECT post_id, locale, source_fingerprint, created_at, updated_at FROM ct_theme_section_translation_meta ORDER BY post_id, locale',
+            'shortcode_preset_translations' => "SELECT spt.*, p.slug AS source_slug, p.title AS source_title FROM shortcode_preset_translations spt INNER JOIN posts p ON p.id = spt.preset_id AND p.type = 'sc_preset' AND p.is_deleted = 0 ORDER BY spt.preset_id, spt.locale",
         ];
         $translations = [];
         foreach ($tables as $name => $sql) {
@@ -246,7 +282,7 @@ if (!function_exists('ct_ensure_schema')) {
 
         return [
             'format' => 'jyavani-content-translation-export',
-            'version' => 3,
+            'version' => 4,
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),
@@ -308,6 +344,39 @@ if (!function_exists('ct_ensure_schema')) {
         } catch (Throwable $e) {
             error_log('[content-translation] save error: ' . $e->getMessage());
             return false;
+        }
+    }
+
+    function ct_save_translation_locked(PDO $pdo, int $postId, string $locale, string $loadedState, array $data): array {
+        if ($postId <= 0 || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
+            || !function_exists('ct_translation_row_state_token')) {
+            throw new InvalidArgumentException('Editor lock state is invalid. Reload the editor.');
+        }
+        if (!ct_ensure_schema($pdo)) throw new RuntimeException('Translation storage is unavailable.');
+        $ownsTransaction = !$pdo->inTransaction();
+        if ($ownsTransaction) $pdo->beginTransaction();
+        try {
+            $source = $pdo->prepare('SELECT id FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
+            $source->execute([$postId]);
+            if (!$source->fetchColumn()) throw new RuntimeException('Source post no longer exists.');
+
+            $currentStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE');
+            $currentStmt->execute([$postId, $locale]);
+            $current = $currentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (!hash_equals($loadedState, ct_translation_row_state_token($current))) {
+                throw new RuntimeException('This translation was changed by another editor. Reload before saving.');
+            }
+            if (!ct_save_translation($pdo, $postId, $locale, $data)) throw new RuntimeException('Translation save failed.');
+
+            $savedStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1');
+            $savedStmt->execute([$postId, $locale]);
+            $saved = $savedStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if ($saved === null) throw new RuntimeException('Saved translation could not be loaded.');
+            if ($ownsTransaction) $pdo->commit();
+            return $saved;
+        } catch (Throwable $error) {
+            if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+            throw $error;
         }
     }
 

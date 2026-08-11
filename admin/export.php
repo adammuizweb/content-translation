@@ -16,6 +16,10 @@ if (!$pdo instanceof PDO) {
     http_response_code(500);
     exit('Database not available');
 }
+if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+    http_response_code(403);
+    exit('Admin role required');
+}
 
 try {
     $json = json_encode(ct_export_data($pdo), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);

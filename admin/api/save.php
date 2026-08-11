@@ -15,11 +15,19 @@ if (!function_exists('csrf_check') || !csrf_check((string)($_POST['csrf_token'] 
     return;
 }
 
-$postId = (int)($_POST['post_id'] ?? 0);
-$locale = trim((string)($_POST['locale'] ?? ''));
+$postIdInput = $_POST['post_id'] ?? 0;
+$postId = is_scalar($postIdInput) ? (int)$postIdInput : 0;
+$localeInput = $_POST['locale'] ?? '';
+$locale = is_scalar($localeInput) ? trim((string)$localeInput) : '';
+$stateInput = $_POST['translation_state'] ?? '';
+$loadedState = is_string($stateInput) ? trim($stateInput) : '';
 
 if ($postId <= 0 || $locale === '') {
     echo json_encode(['error' => 'post_id and locale required']);
+    return;
+}
+if (preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1) {
+    echo json_encode(['error' => __('Editor lock state is invalid. Reload the editor.')]);
     return;
 }
 
@@ -141,18 +149,19 @@ try {
         return;
     }
 
-    $ok = ct_save_translation($pdo, $postId, $locale, $candidate);
-    if ($ok) {
-        $savedStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1');
-        $savedStmt->execute([$postId, $locale]);
-        $saved = $savedStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    try {
+        $saved = ct_save_translation_locked($pdo, $postId, $locale, $loadedState, $candidate);
         echo json_encode([
             'success' => true,
             'message' => __('Translation saved.'),
             'translation_state' => ct_translation_row_state_token($saved),
         ]);
-    } else {
-        echo json_encode(['error' => __('Save failed.')]);
+    } catch (Throwable $error) {
+        error_log('[content-translation] locked save error: ' . $error->getMessage());
+        $message = str_contains($error->getMessage(), 'changed by another editor')
+            ? __('This translation was changed by another editor. Reload before saving.')
+            : __('Save failed.');
+        echo json_encode(['error' => $message]);
     }
 } finally {
     if ($slugLock !== '') {
