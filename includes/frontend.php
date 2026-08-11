@@ -801,7 +801,12 @@ add_action('init', function () {
     // public/index.php can serve the default root without invoking router_path.
     $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
     if ($path !== '' || trim((string)($_GET['s'] ?? '')) !== '') return;
-    if (ct_homepage_theme_post($pdo)) return;
+    $homepage = ct_homepage_theme_post($pdo);
+    if ($homepage) {
+        $GLOBALS['ct_current_post'] = $homepage;
+        $GLOBALS['ct_localized_homepage'] = true;
+        return;
+    }
     $resource = ct_homepage_theme_file_resource($pdo);
     if (!$resource) return;
     $GLOBALS['ct_current_theme_file'] = $resource;
