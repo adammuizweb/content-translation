@@ -1,6 +1,6 @@
 # Shortcode Preset Translation
 
-Content Translation `1.11.0` requires Jyavani Core `2.3.58` or newer for the
+Content Translation `1.12.0` requires Jyavani Core `2.3.59` or newer for the
 Shortcode Preset lifecycle, render-time, and preview contracts.
 
 Content Translation provides an admin-only translation resource for Core

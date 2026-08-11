@@ -7,7 +7,6 @@ $__ct_dir = __DIR__;
 
 require_once $__ct_dir . '/includes/helpers.php';
 require_once $__ct_dir . '/includes/shortcode-presets.php';
-require_once $__ct_dir . '/includes/directory-pages.php';
 require_once $__ct_dir . '/includes/frontend.php';
 require_once $__ct_dir . '/includes/theme-section-packages.php';
 require_once $__ct_dir . '/includes/admin.php';

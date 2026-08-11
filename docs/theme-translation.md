@@ -11,7 +11,7 @@ Content Translation supports three separate theme workflows:
 All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-Content Translation `1.11.0` requires Jyavani Core `2.3.58` or newer. Core
+Content Translation `1.12.0` requires Jyavani Core `2.3.59` or newer. Core
 `2.3.54` introduced the generic Theme Section renderer and hooks required by the
 `ct-theme-sections-v1` adapter; Core `2.3.55` added the canonical content routes
 used by localized Theme Templates and their sitemaps. Core `2.3.57` supplies the
@@ -19,7 +19,8 @@ registered source descriptors and deterministic section fingerprints consumed
 by the editor. Core `2.3.58` supplies failure-propagating preset deletion,
 render-time preset configuration, and live-preview configuration contracts. The
 Core contract also includes the slot-aware `theme_mod_value` hook used by
-file-backed translation.
+file-backed translation. Core `2.3.59` adds source-editor integration and
+script-free, theme-styled Theme Section previews.
 
 ## Theme Section package contract
 

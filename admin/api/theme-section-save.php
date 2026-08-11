@@ -71,8 +71,7 @@ try {
             ['author']
         );
         $reserved = in_array($firstSegment, $reservedRoutes, true)
-            || preg_match('/^\d{4}$/', $firstSegment) === 1
-            || (function_exists('ct_find_directory_page') && ct_find_directory_page($pdo, $slug) !== null);
+            || preg_match('/^\d{4}$/', $firstSegment) === 1;
         $reserved = (bool)apply_filters('content_translation_slug_is_reserved', $reserved, $postId, $locale, $slug, $pdo);
         if ($reserved) throw new InvalidArgumentException(__('Slug uses a reserved public route'));
 

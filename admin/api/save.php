@@ -101,11 +101,8 @@ try {
             function_exists('ct_enabled_locales') ? ct_enabled_locales($pdo) : [],
             ['author']
         );
-        $directoryCollision = function_exists('ct_find_directory_page')
-            && ct_find_directory_page($pdo, $slug) !== null;
         $routeReserved = in_array($firstSegment, $reservedRoutes, true)
-            || preg_match('/^\d{4}$/', $firstSegment)
-            || $directoryCollision;
+            || preg_match('/^\d{4}$/', $firstSegment);
         $routeReserved = (bool)apply_filters(
             'content_translation_slug_is_reserved',
             $routeReserved,

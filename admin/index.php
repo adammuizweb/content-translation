@@ -55,18 +55,13 @@ if ($section === 'theme-files'):
     if ($homepageResource && !isset($resources[$homepageResource['id']])) {
         $resources += ct_theme_file_resources($pdo, (string)$homepageResource['theme_folder']);
     }
-    if (function_exists('ct_directory_pages')) {
-        foreach (ct_directory_pages($pdo) as $page) {
-            $resources += ct_theme_file_resources($pdo, (string)$page['theme_folder']);
-        }
-    }
     $statuses = ct_theme_file_translation_statuses($pdo, $resources);
 ?>
 <div class="ct-admin">
   <div class="ct-header">
     <div>
       <h2><?= __('Theme Files') ?></h2>
-      <p class="muted"><?= __('File-backed resources declared by themes and registered directory pages. A published locale must contain every declared translatable field.') ?></p>
+      <p class="muted"><?= __('File-backed resources declared by the active theme and the theme assigned to the homepage. A published locale must contain every declared translatable field.') ?></p>
     </div>
     <a class="btn" href="<?= h($selfUrl) ?>"><?= __('Back') ?></a>
   </div>
@@ -82,7 +77,7 @@ if ($section === 'theme-files'):
       <?php endif; ?>
       <?php foreach ($resources as $resource): ?>
         <tr>
-          <td><strong><?= h((string)$resource['label']) ?></strong><br><small class="muted"><?= h((string)$resource['theme_folder']) ?><?php if (!empty($resource['directory_page']['path'])): ?> · /<?= h((string)$resource['directory_page']['path']) ?>/<?php endif; ?></small></td>
+          <td><strong><?= h((string)$resource['label']) ?></strong><br><small class="muted"><?= h((string)$resource['theme_folder']) ?></small></td>
           <td><code><?= h((string)$resource['slot_key']) ?></code></td>
           <td><?= h(implode(', ', array_map(fn(array $field): string => (string)$field['label'], $resource['fields']))) ?></td>
           <td class="ct-translations-col">

@@ -7,6 +7,7 @@
 - Focus the selected section in the package editor and return to its source renderer.
 - Load active-theme styles in sandboxed source and translated section previews.
 - Keep preview scripts disabled while allowing same-origin theme fonts and removing script elements from preview documents.
+- Remove dormant directory-page routing that is outside the supported plugin scope.
 
 ## 1.11.0 - 2026-08-11
 
