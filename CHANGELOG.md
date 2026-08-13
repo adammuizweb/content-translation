@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Keep localized post-category labels and URLs from replacing the current post's document metadata.
+
 ## 1.12.0 - 2026-08-11
 
 - Start Shortcode Preset translations from the Core source editor and retain the standalone page as a status overview.

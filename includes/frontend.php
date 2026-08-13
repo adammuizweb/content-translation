@@ -323,7 +323,7 @@ add_filter('collection_query_clauses', function ($clauses, $context) {
 add_filter('collection_item', function ($item, $type, $context) {
     $pdo = $GLOBALS['pdo'] ?? null;
     if ($type !== 'category' || !$pdo instanceof PDO) return $item;
-    if (in_array($context['scope'] ?? '', ['category', 'category_breadcrumb', 'post_category'], true)) {
+    if (($context['scope'] ?? '') === 'category') {
         $GLOBALS['ct_current_category'] = $item;
     }
     return ct_overlay_category_translation($item, $pdo);
