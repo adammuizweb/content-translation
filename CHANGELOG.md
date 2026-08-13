@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.12.1 - 2026-08-13
 
+- Initialize assigned homepage context for localized homepage switching and metadata.
 - Keep localized post-category labels and URLs from replacing the current post's document metadata.
 
 ## 1.12.0 - 2026-08-11
