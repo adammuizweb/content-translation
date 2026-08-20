@@ -13,9 +13,9 @@ if (!$pdo instanceof PDO) {
     echo json_encode(['error' => __('Database not available')]);
     return;
 }
-if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+if (!ct_user_can_workspace($pdo)) {
     http_response_code(403);
-    echo json_encode(['error' => __('Admin role required')]);
+    echo json_encode(['error' => __('Access denied')]);
     return;
 }
 if (!function_exists('csrf_check') || !csrf_check(is_scalar($_POST['csrf_token'] ?? null) ? (string)$_POST['csrf_token'] : '')) {
@@ -34,6 +34,11 @@ $loadedSourceState = trim($scalar('source_state'));
 $loadedTranslationState = trim($scalar('translation_state'));
 $intent = $scalar('intent');
 if ($intent === 'repair_orphans') {
+    if (!user_can($pdo, ct_current_user_id(), 'core.shortcodes.delete')) {
+        http_response_code(403);
+        echo json_encode(['error' => __('Access denied')]);
+        return;
+    }
     try {
         $removed = ct_repair_shortcode_preset_orphans($pdo);
         echo json_encode([
@@ -52,10 +57,18 @@ if ($presetId <= 0 || $locale === '' || !in_array($intent, ['save', 'delete'], t
     echo json_encode(['error' => __('Invalid preset translation request.')]);
     return;
 }
+$presetStmt = $pdo->prepare("SELECT id, created_by FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1");
+$presetStmt->execute([$presetId]);
+$preset = $presetStmt->fetch(PDO::FETCH_ASSOC);
+if (!$preset || !user_can($pdo, ct_current_user_id(), 'core.shortcodes.update', ['owner_id' => (int)$preset['created_by']])) {
+    http_response_code(404);
+    echo json_encode(['error' => __('Shortcode Preset not found')]);
+    return;
+}
 
 try {
     if ($intent === 'delete') {
-        ct_delete_shortcode_preset_translation($pdo, $presetId, $locale, $loadedSourceState, $loadedTranslationState);
+        ct_delete_shortcode_preset_translation($pdo, $presetId, $locale, $loadedSourceState, $loadedTranslationState, ct_current_user_id());
         echo json_encode(['success' => true, 'message' => __('Translation deleted.')]);
         return;
     }
@@ -63,7 +76,7 @@ try {
         'title' => $scalar('title'),
         'kicker' => $scalar('kicker'),
         'status' => $scalar('status'),
-    ]);
+    ], ct_current_user_id());
     echo json_encode([
         'success' => true,
         'message' => __('Translation saved.'),

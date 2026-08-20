@@ -31,10 +31,10 @@ if (!in_array($locale, $locales, true)) {
     return;
 }
 
-$stmt = $pdo->prepare("SELECT id, type, title, slug, content, status FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, title, slug, content, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$post) {
+if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) {
     echo '<p>' . __('Post not found.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
     return;
 }

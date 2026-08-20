@@ -24,7 +24,7 @@ if ($postId <= 0 || $locale === '' || preg_match('/\A[a-f0-9]{64}\z/', $translat
     return;
 }
 
-$ok = ct_delete_translation($pdo, $postId, $locale, $translationState);
+$ok = ct_delete_translation($pdo, $postId, $locale, $translationState, ct_current_user_id());
 
 echo json_encode($ok
     ? ['success' => true]

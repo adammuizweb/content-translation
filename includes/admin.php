@@ -6,14 +6,15 @@ declare(strict_types=1);
 // ─── Ensure schema exists when in admin ───
 add_action('admin_init', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
-    if ($pdo instanceof PDO) {
+    if ($pdo instanceof PDO && ct_user_can_workspace($pdo)) {
         ct_ensure_schema($pdo);
         ct_seed_shortcode_preset_ui_translations($pdo);
     }
 });
 
 add_action('site_settings_after_general', function ($pdo) {
-    if (!$pdo instanceof PDO) return;
+    if (!$pdo instanceof PDO || !ct_user_can_workspace($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.settings.manage')) return;
     $locales = ct_enabled_locales($pdo);
     if (empty($locales)) return;
     $id = 'ct-site-identity';
@@ -31,7 +32,8 @@ add_action('site_settings_after_general', function ($pdo) {
 }, 10, 1);
 
 add_action('site_settings_after_save', function ($pdo, $input) {
-    if (!$pdo instanceof PDO || !is_array($input)) return;
+    if (!$pdo instanceof PDO || !is_array($input) || !ct_user_can_workspace($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.settings.manage')) return;
     foreach (ct_enabled_locales($pdo) as $locale) {
         ct_save_site_translation($pdo, $locale, trim((string)($input['ct_site_title'][$locale] ?? '')), trim((string)($input['ct_site_description'][$locale] ?? '')));
     }
@@ -40,7 +42,7 @@ add_action('site_settings_after_save', function ($pdo, $input) {
 // ─── Translation picker in Core content editors ───
 if (!function_exists('ct_render_editor_translation_picker')) {
     function ct_render_editor_translation_picker(array $post, PDO $pdo): void {
-        if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
+        if (!ct_user_can_translate_post($pdo, $post, 'update')) return;
         $id = (int)($post['id'] ?? 0);
         if ($id <= 0) return;
 
@@ -88,7 +90,8 @@ add_action('theme_editor_before_content', function ($theme, $pdo) {
 add_action('shortcode_layout_editor_after_header', function ($context, $pdo): void {
     if (!is_array($context) || !$pdo instanceof PDO
         || ($context['scope'] ?? '') !== 'section' || !empty($context['is_new'])
-        || !function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+        || !ct_user_can_workspace($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.shortcode_layouts.manage')) {
         return;
     }
     $sectionName = is_string($context['name'] ?? null) ? trim($context['name']) : '';
@@ -169,7 +172,8 @@ add_action('shortcode_layout_editor_after_header', function ($context, $pdo): vo
 
 add_action('category_editor_after_fields', function ($category, $pdo) {
     if (!is_array($category) || !$pdo instanceof PDO) return;
-    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
+    if (!ct_user_can_workspace($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.categories.update', ['owner_id' => (int)($category['created_by'] ?? 0)])) return;
     $locales = ct_enabled_locales($pdo);
     if (empty($locales)) return;
     $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
@@ -185,7 +189,8 @@ add_action('category_editor_after_fields', function ($category, $pdo) {
 
 add_action('profile_after_fields', function ($user, $pdo) {
     if (!is_array($user) || !$pdo instanceof PDO) return;
-    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
+    if (!ct_user_can_workspace($pdo) || (int)($user['id'] ?? 0) !== ct_current_user_id()
+        || !user_can($pdo, ct_current_user_id(), 'core.profile.manage')) return;
     $locales = ct_enabled_locales($pdo);
     if (empty($locales)) return;
     $id = 'ct-author-bio-' . (int)$user['id'];
@@ -204,7 +209,8 @@ add_action('profile_after_fields', function ($user, $pdo) {
 
 add_action('profile_after_save', function ($userId, $pdo, $input) {
     if (!$pdo instanceof PDO || !is_array($input)) return;
-    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
+    if (!ct_user_can_workspace($pdo) || (int)$userId !== ct_current_user_id()
+        || !user_can($pdo, ct_current_user_id(), 'core.profile.manage')) return;
     foreach ((array)($input['ct_author_bio'] ?? []) as $locale => $bio) {
         ct_save_author_profile_translation($pdo, (int)$userId, (string)$locale, trim((string)$bio));
     }

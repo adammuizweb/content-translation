@@ -7,9 +7,9 @@ if (!function_exists('h')) {
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo instanceof PDO) { echo '<p>' . h(__('Database not available.')) . '</p>'; return; }
-if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+if (!ct_user_can_workspace($pdo)) {
     http_response_code(403);
-    echo '<p>' . h(__('Admin role required.')) . '</p>';
+    echo '<p>' . h(__('Access denied.')) . '</p>';
     return;
 }
 ct_ensure_schema($pdo);
@@ -29,10 +29,10 @@ if ($presetId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) {
     echo '<p>' . h(__('Preset or locale is not available.')) . ' <a href="' . h($listUrl) . '">' . h(__('Back')) . '</a></p>';
     return;
 }
-$stmt = $pdo->prepare("SELECT id, title, slug, status, meta FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, title, slug, status, meta, created_by FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$presetId]);
 $preset = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$preset) {
+if (!$preset || !user_can($pdo, ct_current_user_id(), 'core.shortcodes.update', ['owner_id' => (int)($preset['created_by'] ?? 0)])) {
     echo '<p>' . h(__('Shortcode Preset not found.')) . ' <a href="' . h($listUrl) . '">' . h(__('Back')) . '</a></p>';
     return;
 }

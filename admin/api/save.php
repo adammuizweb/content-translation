@@ -36,10 +36,16 @@ if (!in_array($locale, ct_enabled_locales($pdo), true)) {
     return;
 }
 
-$stmt = $pdo->prepare("SELECT id, type, content FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$actorId = ct_current_user_id();
+$stmt = $pdo->prepare("SELECT id, type, content, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $sourcePost = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$sourcePost) {
+if (!$sourcePost || !in_array((string)($sourcePost['type'] ?? ''), ['article', 'page', 'theme'], true)) {
+    echo json_encode(['error' => 'Post not found']);
+    return;
+}
+if (!ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
+    http_response_code(404);
     echo json_encode(['error' => 'Post not found']);
     return;
 }
@@ -72,6 +78,12 @@ $existing = ct_get_translation($pdo, $postId, $locale);
 $status = (string)($_POST['status'] ?? ($existing['status'] ?? 'published'));
 if (!in_array($status, ['draft', 'published'], true)) {
     echo json_encode(['error' => __('Invalid translation status')]);
+    return;
+}
+if (($status === 'published' || (string)($existing['status'] ?? '') === 'published')
+    && !ct_user_can_publish_post_translation($pdo, $sourcePost, $actorId)) {
+    http_response_code(403);
+    echo json_encode(['error' => __('Publishing translation permission denied.')]);
     return;
 }
 if ($status === 'published' && ($title === '' || (!$isHomepage && $slug === ''))) {
@@ -137,7 +149,7 @@ try {
         'locale'           => $locale,
         'title'            => $title,
         'slug'             => $slug,
-        'content'          => (string)($_POST['content'] ?? ''),
+        'content'          => ct_sanitize_translation_content($pdo, $sourcePost, (string)($_POST['content'] ?? ''), $actorId),
         'meta_description' => $metaDescription,
         'status'           => $status,
     ];
@@ -147,7 +159,7 @@ try {
     }
 
     try {
-        $saved = ct_save_translation_locked($pdo, $postId, $locale, $loadedState, $candidate);
+        $saved = ct_save_translation_locked($pdo, $postId, $locale, $loadedState, $candidate, $actorId);
         echo json_encode([
             'success' => true,
             'message' => __('Translation saved.'),

@@ -16,6 +16,18 @@ function add_action(string $hook, callable $callback, int $priority = 10, int $a
     $actions[$hook][] = $callback;
 }
 
+function apply_filters(string $hook, mixed $value, mixed ...$args): mixed
+{
+    global $filters;
+    foreach ($filters[$hook] ?? [] as $callback) $value = $callback($value, ...$args);
+    return $value;
+}
+
+function content_default_locale(): string
+{
+    return 'en';
+}
+
 function ct_overlay_published_translation(array $post, PDO $pdo, ?string $locale = null): array
 {
     $post['title'] = '[' . (string)$locale . '] ' . (string)($post['title'] ?? '');
@@ -26,6 +38,11 @@ function ct_overlay_published_translation(array $post, PDO $pdo, ?string $locale
 function ct_post_url(string $slug, ?string $locale = null): string
 {
     return '/' . ($locale ? $locale . '/' : '') . trim($slug, '/') . '/';
+}
+
+function ct_homepage_url(?string $locale = null): string
+{
+    return $locale ? '/' . $locale . '/' : '/';
 }
 
 require dirname(__DIR__) . '/includes/frontend.php';
@@ -70,6 +87,23 @@ $fallbackUrl = $urlFilter('/de/already-correct/', 'article', [
     'item' => ['slug' => 'source-post'],
 ]);
 $check($fallbackUrl === '/de/already-correct/', 'shortcode URLs retain an existing permalink without a translated slug marker');
+
+unset($GLOBALS['ct_request_locale']);
+add_filter('content_translation_search_locale', static fn($locale) => $locale ?: 'id', 20, 2);
+$actionFilter = $filters['search_form_action'][0] ?? null;
+$baseFilter = $filters['search_base_url'][0] ?? null;
+$searchQueryFilter = $filters['search_query_parts'][0] ?? null;
+$searchRowsFilter = $filters['search_results'][0] ?? null;
+$check($actionFilter('https://example.test', $GLOBALS['pdo']) === '/id/', 'host-provided search locale localizes form actions');
+$check($baseFilter('/?s=panduan', $GLOBALS['pdo'], 'panduan') === '/id/?s=panduan', 'host-provided search locale localizes pagination bases');
+$searchParts = $searchQueryFilter([
+    'where' => ["type = 'article'", 'live', 'published', 'source search'],
+    'params' => [':kw' => '%panduan%'],
+], $GLOBALS['pdo'], 'panduan');
+$check(str_contains((string)($searchParts['where'][3] ?? ''), 'post_translations'), 'host-provided locale searches translated fields');
+$check(($searchParts['params'][':ct_search_locale'] ?? '') === 'id', 'host-provided search locale is bound');
+$localizedSearchRows = $searchRowsFilter([['id' => 7, 'title' => 'Source']], $GLOBALS['pdo']);
+$check(($localizedSearchRows[0]['title'] ?? '') === '[id] Source', 'host-provided locale overlays translated search results');
 
 if ($failures !== []) {
     fwrite(STDERR, count($failures) . " assertion(s) failed.\n");

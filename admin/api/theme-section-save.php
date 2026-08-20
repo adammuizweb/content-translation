@@ -13,9 +13,9 @@ if (!$pdo instanceof PDO) {
     echo json_encode(['error' => 'Database not available']);
     return;
 }
-if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+if (!ct_user_can_workspace($pdo) || !ct_user_is_site_owner($pdo)) {
     http_response_code(403);
-    echo json_encode(['error' => 'Admin role required']);
+    echo json_encode(['error' => 'Access denied']);
     return;
 }
 if (!function_exists('csrf_check') || !csrf_check((string)($_POST['csrf_token'] ?? ''))) {

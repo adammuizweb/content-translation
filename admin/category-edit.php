@@ -7,11 +7,13 @@ ct_ensure_schema($pdo);
 $categoryId = (int)($_GET['category_id'] ?? 0);
 $locale = trim((string)($_GET['locale'] ?? ''));
 if ($categoryId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) { echo '<p>Invalid category or locale.</p>'; return; }
-$stmt = $pdo->prepare('SELECT id, name, slug, description FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, name, slug, description, created_by FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
 $stmt->execute([$categoryId]);
 $category = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$category) { echo '<p>Category not found.</p>'; return; }
-if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['ct_save_category_translation']) && csrf_check((string)($_POST['csrf_token'] ?? ''))) {
+if (!$category || !ct_user_can_workspace($pdo)
+    || !user_can($pdo, ct_current_user_id(), 'core.categories.update', ['owner_id' => (int)($category['created_by'] ?? 0)])) { echo '<p>Category not found.</p>'; return; }
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['ct_save_category_translation'])) {
+    if (!function_exists('csrf_check') || !csrf_check((string)($_POST['csrf_token'] ?? ''))) { http_response_code(419); echo '<p>Invalid CSRF token.</p>'; return; }
     ct_save_category_translation($pdo, $categoryId, $locale, $_POST);
     header('Location: ' . (defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira') . '/?page=admin/tools/content-translation/category-edit&category_id=' . $categoryId . '&locale=' . urlencode($locale));
     exit;

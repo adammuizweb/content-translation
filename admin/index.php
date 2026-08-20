@@ -50,6 +50,7 @@ if ($section === 'content-translation'):
 <?php return; endif;
 
 if ($section === 'theme-files'):
+    if (!user_can($pdo, ct_current_user_id(), 'core.themes.manage')) { http_response_code(404); return; }
     $resources = ct_theme_file_resources($pdo);
     $homepageResource = ct_homepage_theme_file_resource($pdo);
     if ($homepageResource && !isset($resources[$homepageResource['id']])) {
@@ -105,17 +106,24 @@ $pageNum = max(1, (int)($_GET['p'] ?? 1));
 $perPage = 20;
 $offset = ($pageNum - 1) * $perPage;
 
-$where = "is_deleted = 0 AND type IN ('article','page','theme')";
+$where = "p.is_deleted = 0 AND p.type IN ('article','page','theme')";
 $params = [];
 if ($typeFilter !== '' && in_array($typeFilter, ['article', 'page', 'theme'], true)) {
-    $where .= " AND type = ?";
-    $params[] = $typeFilter;
+    $where .= " AND p.type = :ct_type";
+    $params[':ct_type'] = $typeFilter;
 }
 if ($q !== '') {
-    $where .= " AND (title LIKE ? OR slug LIKE ?)";
-    $params[] = '%' . $q . '%';
-    $params[] = '%' . $q . '%';
+    $where .= " AND (p.title LIKE :ct_title OR p.slug LIKE :ct_slug)";
+    $params[':ct_title'] = '%' . $q . '%';
+    $params[':ct_slug'] = '%' . $q . '%';
 }
+$listPermission = $typeFilter === 'article' ? 'core.posts.read' : ($typeFilter === 'page' ? 'core.pages.read' : 'core.theme_content.read');
+$ownerScope = function_exists('authorization_owner_scope_condition')
+    ? authorization_owner_scope_condition($pdo, ct_current_user_id(), $listPermission, 'p.created_by', 'ct_list')
+    : null;
+if ($typeFilter === 'theme' && !ct_user_is_site_owner($pdo)) $ownerScope = null;
+$where .= $ownerScope === null ? ' AND 1=0' : ' AND (' . $ownerScope['sql'] . ')';
+if ($ownerScope !== null) $params = array_merge($params, $ownerScope['params']);
 
 if ($typeFilter === 'theme') {
     $batchSize = 250;
@@ -126,11 +134,11 @@ if ($typeFilter === 'theme') {
     $lastMatches = [];
     $contentStmt = $pdo->prepare('SELECT content FROM posts WHERE id = ? LIMIT 1');
     do {
-        $listStmt = $pdo->prepare("SELECT id, type, title, slug, status, updated_at,
-                CASE WHEN LOCATE('widget:theme_section', content) > 0 THEN 1 ELSE 0 END AS package_candidate
-            FROM posts WHERE $where AND (updated_at < ? OR (updated_at = ? AND id < ?))
-            ORDER BY updated_at DESC, id DESC LIMIT $batchSize");
-        $listStmt->execute(array_merge($params, [$cursorUpdated, $cursorUpdated, $cursorId]));
+        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.status, p.updated_at,
+                CASE WHEN LOCATE('widget:theme_section', p.content) > 0 THEN 1 ELSE 0 END AS package_candidate
+            FROM posts p WHERE $where AND (p.updated_at < :ct_cursor_before OR (p.updated_at = :ct_cursor_equal AND p.id < :ct_cursor_id))
+            ORDER BY p.updated_at DESC, p.id DESC LIMIT $batchSize");
+        $listStmt->execute(array_merge($params, [':ct_cursor_before' => $cursorUpdated, ':ct_cursor_equal' => $cursorUpdated, ':ct_cursor_id' => $cursorId]));
         $candidates = $listStmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($candidates as $post) {
             $packageComposed = false;
@@ -160,10 +168,10 @@ if ($typeFilter === 'theme') {
         $pageNum = $boundedPage;
     }
 } else {
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE $where");
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts p WHERE $where");
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
-    $listStmt = $pdo->prepare("SELECT id, type, title, slug, status FROM posts WHERE $where ORDER BY updated_at DESC LIMIT $perPage OFFSET $offset");
+    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.status FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
     $listStmt->execute($params);
     $posts = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     $totalPages = max(1, (int)ceil($total / $perPage));

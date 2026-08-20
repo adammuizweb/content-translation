@@ -184,28 +184,57 @@ add_filter('widget_categories', function ($items, $pdo) {
     ));
 }, 10, 2);
 
+if (!function_exists('ct_search_locale')) {
+    function ct_search_locale(?PDO $pdo = null): ?string {
+        $locale = apply_filters('content_translation_search_locale', $GLOBALS['ct_request_locale'] ?? null, $pdo);
+        if (!is_string($locale)) return null;
+        $locale = trim($locale);
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        if ($locale === '' || $locale === $default || preg_match('/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/', $locale) !== 1) return null;
+        return $locale;
+    }
+}
+
+if (!function_exists('ct_localize_search_query')) {
+    function ct_localize_search_query(array $parts, string $locale): array {
+        if (!is_array($parts['where'] ?? null) || !is_array($parts['params'] ?? null)) return $parts;
+        $parts['where'][3] = "EXISTS (SELECT 1 FROM post_translations ct_search WHERE ct_search.post_id = posts.id AND ct_search.locale = :ct_search_locale AND ct_search.status = 'published' AND (ct_search.title LIKE :kw OR ct_search.content LIKE :kw))";
+        $parts['params'][':ct_search_locale'] = $locale;
+        return $parts;
+    }
+}
+
+if (!function_exists('ct_localize_search_results')) {
+    function ct_localize_search_results(array $results, PDO $pdo, string $locale): array {
+        return array_map(fn($post) => ct_overlay_published_translation($post, $pdo, $locale), $results);
+    }
+}
+
 add_filter('widget_search_action', function ($action, $pdo) {
-    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
     return $locale ? ct_homepage_url($locale) : $action;
 }, 10, 2);
 
 add_filter('search_form_action', function ($action, $pdo) {
-    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
     return $locale ? ct_homepage_url($locale) : $action;
 }, 10, 2);
 
+add_filter('search_base_url', function ($base, $pdo, $query) {
+    $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
+    return $locale ? ct_homepage_url($locale) . '?' . http_build_query(['s' => (string)$query]) : $base;
+}, 10, 3);
+
 add_filter('search_query_parts', function ($parts, $pdo, $query) {
-    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
     if (!$locale || !is_array($parts)) return $parts;
-    $parts['where'][3] = "EXISTS (SELECT 1 FROM post_translations ct_search WHERE ct_search.post_id = posts.id AND ct_search.locale = :ct_search_locale AND ct_search.status = 'published' AND (ct_search.title LIKE :kw OR ct_search.content LIKE :kw))";
-    $parts['params'][':ct_search_locale'] = $locale;
-    return $parts;
+    return ct_localize_search_query($parts, $locale);
 }, 10, 3);
 
 add_filter('search_results', function ($results, $pdo) {
-    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
     if (!$locale || !is_array($results) || !$pdo instanceof PDO) return $results;
-    return array_map(fn($post) => ct_overlay_published_translation($post, $pdo, $locale), $results);
+    return ct_localize_search_results($results, $pdo, $locale);
 }, 10, 2);
 
 add_filter('widget_category_url', function ($url, $category, $pdo) {
@@ -264,10 +293,8 @@ add_filter('post_content', function ($html, $post) {
     if (!$locale || !$pdo instanceof PDO || !is_array($post) || ($post['type'] ?? '') !== 'theme' || $postId <= 0
         || !function_exists('jvb_get_layout')) return $html;
 
-    if (isset($_GET['jvb_preview']) && function_exists('is_logged_in') && is_logged_in()) {
-        $role = function_exists('current_user_role') ? current_user_role($pdo) : null;
-        if (in_array($role, ['editor', 'admin'], true)) return $html;
-    }
+    if (isset($_GET['jvb_preview']) && function_exists('jvb_can_preview_draft')
+        && jvb_can_preview_draft($pdo, $postId)) return $html;
 
     try {
         if (jvb_get_layout($pdo, $postId, 'published') === null) return $html;

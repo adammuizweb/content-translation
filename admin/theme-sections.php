@@ -7,6 +7,7 @@ if (!function_exists('h')) {
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo instanceof PDO) { echo '<p>' . h(__('Database not available.')) . '</p>'; return; }
+if (!ct_user_can_workspace($pdo) || !ct_user_is_site_owner($pdo)) { http_response_code(404); return; }
 ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';

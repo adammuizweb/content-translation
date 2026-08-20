@@ -1,6 +1,6 @@
 {
   "name": "content-translation",
-  "version": "1.12.1",
+  "version": "1.12.2",
   "title": "Content Translation",
   "description": "Reviewed translations for posts, pages, Shortcode Presets, Theme Section packages, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
   "author": "Adam Muiz",
@@ -14,9 +14,12 @@
   },
   "icon": "icon.png",
   "requires": {
-    "jyavani": ">=2.3.59",
+    "jyavani": ">=2.3.81",
     "php": ">=8.1",
-    "extensions": ["pdo", "json"]
+    "extensions": [
+      "pdo",
+      "json"
+    ]
   },
   "admin": {
     "pages": [
@@ -24,122 +27,176 @@
         "route": "admin/tools/content-translation",
         "file": "admin/index.php",
         "title": "Content Translation",
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/edit",
         "file": "admin/edit.php",
         "title": "Edit Translation",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/posts",
         "file": "admin/index.php",
         "title": "Translate Posts",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/pages",
         "file": "admin/index.php",
         "title": "Translate Pages",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/themes",
         "file": "admin/index.php",
         "title": "Translate Theme Partials",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/theme-sections",
         "file": "admin/theme-sections.php",
         "title": "Translate Theme Sections",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/theme-section-edit",
         "file": "admin/theme-section-edit.php",
         "title": "Edit Theme Section Translation",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/theme-files",
         "file": "admin/index.php",
         "title": "Translate Theme Files",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/theme-file-edit",
         "file": "admin/theme-file-edit.php",
         "title": "Edit Theme File Translation",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/shortcodes",
         "file": "admin/shortcodes.php",
         "title": "Translate Shortcode Presets",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/shortcode-edit",
         "file": "admin/shortcode-edit.php",
         "title": "Edit Shortcode Preset Translation",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/category-edit",
         "file": "admin/category-edit.php",
         "title": "Edit Category Translation",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/settings",
         "file": "admin/settings.php",
         "title": "Translation Settings",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/export",
         "file": "admin/export.php",
         "title": "Export Translation Backup",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/api/save",
         "file": "admin/api/save.php",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/api/theme-section-save",
         "file": "admin/api/theme-section-save.php",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/api/shortcode-save",
         "file": "admin/api/shortcode-save.php",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       },
       {
         "route": "admin/tools/content-translation/api/delete",
         "file": "admin/api/delete.php",
         "hidden": true,
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
       }
     ],
     "nav": [
@@ -148,7 +205,9 @@
         "icon": "globe",
         "page": "admin/tools/content-translation",
         "parent": "tools",
-        "roles": ["admin"]
+        "roles": [
+          "admin"
+        ]
       }
     ]
   },
@@ -161,7 +220,16 @@
     ]
   },
   "assets": {
-    "css": ["/static/plugins/content-translation/content-translation.css?v=1.12.1"],
+    "css": [
+      "/static/plugins/content-translation/content-translation.css?v=1.12.2"
+    ],
     "js": []
-  }
+  },
+  "permissions": [
+    {
+      "key": "plugin.content-translation.workspace.access",
+      "label": "Access Content Translation Workspace",
+      "supports_scope": false
+    }
+  ]
 }

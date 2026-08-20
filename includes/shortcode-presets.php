@@ -201,7 +201,8 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
         string $locale,
         string $loadedSourceState,
         string $loadedTranslationState,
-        array $data
+        array $data,
+        int $actorId = 0
     ): array {
         if ($presetId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) {
             throw new InvalidArgumentException('Preset or locale is not available.');
@@ -222,10 +223,16 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
         $ownsTransaction = !$pdo->inTransaction();
         if ($ownsTransaction) $pdo->beginTransaction();
         try {
-            $presetStmt = $pdo->prepare("SELECT id, title, slug, status, meta FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1 FOR UPDATE");
+            if ($actorId > 0 && !authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
+            $presetStmt = $pdo->prepare("SELECT id, title, slug, status, meta, created_by FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1 FOR UPDATE");
             $presetStmt->execute([$presetId]);
             $preset = $presetStmt->fetch(PDO::FETCH_ASSOC);
             if (!$preset) throw new RuntimeException('Source preset no longer exists.');
+            if ($actorId > 0 && (!authorization_lock_owner_contexts($pdo, [(int)$preset['created_by']])
+                || !ct_user_can_workspace($pdo, $actorId)
+                || !user_can($pdo, $actorId, 'core.shortcodes.update', ['owner_id' => (int)$preset['created_by']]))) {
+                throw new RuntimeException('Shortcode translation permission denied.');
+            }
             if (!hash_equals($loadedSourceState, ct_shortcode_preset_source_state_token($preset))) {
                 throw new RuntimeException('The source preset changed after this translation was loaded. Reload before saving.');
             }
@@ -260,7 +267,8 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
         int $presetId,
         string $locale,
         string $loadedSourceState,
-        string $loadedTranslationState
+        string $loadedTranslationState,
+        int $actorId = 0
     ): bool {
         if ($presetId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) {
             throw new InvalidArgumentException('Preset or locale is not available.');
@@ -275,10 +283,16 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
         $ownsTransaction = !$pdo->inTransaction();
         if ($ownsTransaction) $pdo->beginTransaction();
         try {
-            $presetStmt = $pdo->prepare("SELECT id, title, slug, status, meta FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1 FOR UPDATE");
+            if ($actorId > 0 && !authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
+            $presetStmt = $pdo->prepare("SELECT id, title, slug, status, meta, created_by FROM posts WHERE id = ? AND type = 'sc_preset' AND is_deleted = 0 LIMIT 1 FOR UPDATE");
             $presetStmt->execute([$presetId]);
             $preset = $presetStmt->fetch(PDO::FETCH_ASSOC);
             if (!$preset) throw new RuntimeException('Source preset no longer exists.');
+            if ($actorId > 0 && (!authorization_lock_owner_contexts($pdo, [(int)$preset['created_by']])
+                || !ct_user_can_workspace($pdo, $actorId)
+                || !user_can($pdo, $actorId, 'core.shortcodes.update', ['owner_id' => (int)$preset['created_by']]))) {
+                throw new RuntimeException('Shortcode translation permission denied.');
+            }
             if (!hash_equals($loadedSourceState, ct_shortcode_preset_source_state_token($preset))) {
                 throw new RuntimeException('The source preset changed after this translation was loaded. Reload before deleting.');
             }
@@ -444,6 +458,8 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'Preset or locale is not available.' => ['Preset atau bahasa tidak tersedia.', 'Preset oder Sprache ist nicht verfügbar.'],
             'Editor lock state is invalid. Reload the editor.' => ['Status kunci editor tidak valid. Muat ulang editor.', 'Der Sperrstatus des Editors ist ungültig. Laden Sie den Editor neu.'],
             'Preset translation storage is unavailable. Check the server error log.' => ['Penyimpanan terjemahan preset tidak tersedia. Periksa log galat server.', 'Der Speicher für Preset-Übersetzungen ist nicht verfügbar. Prüfen Sie das Serverprotokoll.'],
+            'Authorization state is unavailable.' => ['Status otorisasi tidak tersedia.', 'Der Autorisierungsstatus ist nicht verfügbar.'],
+            'Shortcode translation permission denied.' => ['Izin terjemahan shortcode ditolak.', 'Die Berechtigung zur Shortcode-Übersetzung wurde verweigert.'],
             'Source preset no longer exists.' => ['Preset sumber sudah tidak ada.', 'Das Quell-Preset ist nicht mehr vorhanden.'],
             'The source preset changed after this translation was loaded. Reload before saving.' => ['Preset sumber berubah setelah terjemahan dimuat. Muat ulang sebelum menyimpan.', 'Das Quell-Preset wurde nach dem Laden geändert. Laden Sie vor dem Speichern neu.'],
             'The source preset changed after this translation was loaded. Reload before deleting.' => ['Preset sumber berubah setelah terjemahan dimuat. Muat ulang sebelum menghapus.', 'Das Quell-Preset wurde nach dem Laden geändert. Laden Sie vor dem Löschen neu.'],
@@ -461,6 +477,7 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'Source preset configuration is invalid.' => ['Konfigurasi preset sumber tidak valid.', 'Die Konfiguration des Quell-Presets ist ungültig.'],
             'Database not available.' => ['Basis data tidak tersedia.', 'Datenbank nicht verfügbar.'],
             'Admin role required.' => ['Peran admin diperlukan.', 'Administratorrolle erforderlich.'],
+            'Access denied.' => ['Akses ditolak.', 'Zugriff verweigert.'],
             'Back' => ['Kembali', 'Zurück'],
             'Shortcode Preset not found.' => ['Preset Shortcode tidak ditemukan.', 'Shortcode-Preset nicht gefunden.'],
             'Translation' => ['Terjemahan', 'Übersetzung'],
@@ -492,6 +509,8 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'POST required' => ['POST diperlukan', 'POST erforderlich'],
             'Database not available' => ['Basis data tidak tersedia', 'Datenbank nicht verfügbar'],
             'Admin role required' => ['Peran admin diperlukan', 'Administratorrolle erforderlich'],
+            'Access denied' => ['Akses ditolak', 'Zugriff verweigert'],
+            'Shortcode Preset not found' => ['Preset Shortcode tidak ditemukan', 'Shortcode-Preset nicht gefunden'],
             'Invalid CSRF token' => ['Token CSRF tidak valid', 'Ungültiges CSRF-Token'],
         ];
     }
@@ -549,7 +568,9 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
 
 add_action('shortcode_preset_editor_fields', function ($config, $preset, $pdo, $context): void {
     if (!$pdo instanceof PDO || !is_array($config) || !is_array($context) || empty($context['is_admin'])) return;
-    if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') return;
+    $ownerId = is_array($preset) ? (int)($preset['created_by'] ?? 0) : 0;
+    if (!ct_user_can_workspace($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.shortcodes.update', ['owner_id' => $ownerId])) return;
     $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
     $presetId = is_array($preset) ? (int)($preset['id'] ?? 0) : 0;
     $persistedConfig = [];
@@ -600,8 +621,9 @@ add_filter('shortcode_preset_config_before_save', function ($config, $context, $
     $modeInput = $config['_ct_kicker_mode'] ?? null;
     unset($config['_ct_kicker_mode']);
     if (!is_array($context) || !$pdo instanceof PDO) return $config;
-    $isAdmin = function_exists('current_user_role') && current_user_role($pdo) === 'admin';
-    if (!$isAdmin || $modeInput === null) {
+    $canTranslate = ct_user_can_workspace($pdo)
+        && user_can($pdo, ct_current_user_id(), 'core.shortcodes.update', ['owner_id' => (int)($context['created_by'] ?? 0)]);
+    if (!$canTranslate || $modeInput === null) {
         try {
             $persisted = ct_shortcode_preset_persisted_config($pdo, (int)($context['id'] ?? 0));
         } catch (Throwable $e) {

@@ -9,11 +9,12 @@ if (!function_exists('h')) {
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo) { echo '<p>Database not available.</p>'; return; }
+if (!ct_user_can_workspace($pdo) || !user_can($pdo, ct_current_user_id(), 'core.settings.manage')) { http_response_code(404); return; }
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $selfUrl = $base . '/?page=admin/tools/content-translation/settings';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
-$exportUrl = $base . '/admin/tools/content-translation/export.php';
+$exportUrl = $base . '/?page=admin/tools/content-translation/export';
 
 $supported = function_exists('get_supported_locales') ? get_supported_locales() : ['en'];
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');

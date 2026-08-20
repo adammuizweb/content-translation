@@ -27,16 +27,16 @@ foreach ([
     'admin/tools/content-translation/theme-section-edit',
     'admin/tools/content-translation/api/theme-section-save',
 ] as $route) {
-    $check(isset($routes[$route]) && ($routes[$route]['roles'] ?? []) === ['admin'], $route . ' is manifest-admin-only');
+    $check(isset($routes[$route]) && ($routes[$route]['permission'] ?? '') === 'plugin.content-translation.workspace.access', $route . ' uses workspace permission');
 }
 $check(str_contains($sources['save'], "REQUEST_METHOD") && str_contains($sources['save'], "!== 'POST'"), 'package mutation requires POST');
-$check(str_contains($sources['save'], "current_user_role(\$pdo) !== 'admin'"), 'package mutation enforces admin role in depth');
+$check(str_contains($sources['save'], 'ct_user_can_workspace') && str_contains($sources['save'], 'ct_user_is_site_owner'), 'package mutation enforces workspace and Site Owner in depth');
 $check(str_contains($sources['save'], 'csrf_check'), 'package mutation validates CSRF');
 $check(str_contains($sources['delete'], 'translation_state') && str_contains($sources['generic_edit'], "fd.set('translation_state'"), 'translation deletion requires the loaded optimistic state');
 $check(str_contains($sources['generic_save'], 'ct_save_translation_locked') && str_contains($sources['helpers'], 'ct_translation_row_state_token($current)') && str_contains($sources['helpers'], 'FOR UPDATE'), 'generic save validates the loaded optimistic state under row locks');
 $check(str_contains($sources['generic_save'], 'Use the Theme Section editor'), 'generic save rejects package-composed source templates');
 $check(str_contains($sources['generic_edit'], 'theme-section-edit') && str_contains($sources['generic_edit'], 'Location:'), 'generic editor redirects package-composed source templates');
-$check(str_contains($sources['admin'], "current_user_role(\$pdo) !== 'admin'"), 'Core editor translation controls are hidden from non-admin roles');
+$check(str_contains($sources['admin'], 'ct_user_can_translate_post') && str_contains($sources['admin'], 'ct_user_can_workspace'), 'Core editor translation controls intersect plugin and Core permissions');
 $check(str_contains($sources['admin'], "shortcode_layout_editor_after_header") && str_contains($sources['admin'], 'ct_theme_section_template_usages'), 'source renderer editor exposes contextual Theme Template translation controls');
 $check(str_contains($sources['packages'], 'function ct_theme_section_template_usages') && str_contains($sources['packages'], "LOCATE('widget:theme_section'"), 'renderer usage lookup parses bounded package-composed Theme Templates');
 $check(str_contains($sources['editor'], "\$_GET['section']") && str_contains($sources['editor'], 'ct-package-section--focused') && str_contains($sources['editor'], "adiwira_safe_return_to"), 'package editor focuses the requested section and returns safely to its source renderer');

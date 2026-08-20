@@ -81,8 +81,10 @@ function add_action(string $hook, callable $callback, int $priority = 10, int $a
 function ct_ensure_schema(PDO $pdo): bool { return true; }
 function ct_enabled_locales(PDO $pdo): array { return ['de']; }
 function __(string $message): string { return $message; }
-$currentRole = 'admin';
-function current_user_role(PDO $pdo): string { global $currentRole; return $currentRole; }
+function ct_current_user_id(): int { return 1; }
+$canTranslatePreset = true;
+function ct_user_can_workspace(PDO $pdo, ?int $userId = null): bool { global $canTranslatePreset; return $canTranslatePreset; }
+function user_can(PDO $pdo, int $userId, string $permission, array $context = []): bool { global $canTranslatePreset; return $canTranslatePreset; }
 
 require dirname(__DIR__) . '/includes/shortcode-presets.php';
 
@@ -172,14 +174,14 @@ $emptySourceRow['meta'] = '{"layout":"grid","kicker":""}';
 $emptyMutationPdo = new CtPresetMutationPdo($emptySourceRow, $row);
 $unrelatedAdminSave = $beforeSave(['layout' => 'list', 'kicker' => ''], ['id' => 9, 'is_admin' => true], $emptyMutationPdo);
 $check(array_key_exists('kicker', $unrelatedAdminSave) && $unrelatedAdminSave['kicker'] === '', 'unrelated admin save preserves a persisted explicit-empty source kicker');
-$currentRole = 'author';
+$canTranslatePreset = false;
 $forged = $beforeSave(['layout' => 'cards', 'kicker' => 'Forged', '_ct_kicker_mode' => 'automatic'], ['id' => 9, 'is_admin' => false], $mutationPdo);
 $check(($forged['kicker'] ?? '') === 'Latest' && !array_key_exists('_ct_kicker_mode', $forged), 'forged non-admin kicker mutation preserves persisted state and ignores the mode marker');
 $forgedEmpty = $beforeSave(['layout' => 'cards', 'kicker' => 'Forged', '_ct_kicker_mode' => 'custom'], ['id' => 9, 'is_admin' => false], $emptyMutationPdo);
 $check(array_key_exists('kicker', $forgedEmpty) && $forgedEmpty['kicker'] === '', 'forged non-admin save preserves persisted explicit-empty state');
 $forgedCreate = $beforeSave(['layout' => 'cards', 'kicker' => 'Forged'], ['id' => 0, 'is_admin' => false], $mutationPdo);
 $check(!array_key_exists('kicker', $forgedCreate), 'non-admin preset creation cannot add a source kicker');
-$currentRole = 'admin';
+$canTranslatePreset = true;
 
 $conflict = false;
 try {

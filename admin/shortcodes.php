@@ -7,9 +7,9 @@ if (!function_exists('h')) {
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo instanceof PDO) { echo '<p>' . h(__('Database not available.')) . '</p>'; return; }
-if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+if (!ct_user_can_workspace($pdo)) {
     http_response_code(403);
-    echo '<p>' . h(__('Admin role required.')) . '</p>';
+    echo '<p>' . h(__('Access denied.')) . '</p>';
     return;
 }
 ct_ensure_schema($pdo);
@@ -39,6 +39,9 @@ $perPage = 20;
 
 $where = "p.type = 'sc_preset' AND p.is_deleted = 0";
 $params = [];
+$ownerScope = authorization_owner_scope_condition($pdo, ct_current_user_id(), 'core.shortcodes.read', 'p.created_by', 'ct_shortcode');
+$where .= $ownerScope === null ? ' AND 1=0' : ' AND (' . $ownerScope['sql'] . ')';
+if ($ownerScope !== null) $params = array_merge($params, $ownerScope['params']);
 if ($q !== '') {
     $where .= " AND (p.title LIKE :search ESCAPE '!' OR p.slug LIKE :search ESCAPE '!')";
     $params[':search'] = ct_shortcode_preset_like_pattern($q);

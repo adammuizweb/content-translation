@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.12.2 - 2026-08-20
+
+- Honor host-provided locales for search forms, translated-field matching, result overlays, pagination, and canonical URLs.
+- Align workspace routes and translation mutations with Core's dynamic permission policy.
+
 ## 1.12.1 - 2026-08-13
 
 - Initialize assigned homepage context for localized homepage switching and metadata.

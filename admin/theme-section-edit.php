@@ -7,6 +7,7 @@ if (!function_exists('h')) {
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo instanceof PDO) { echo '<p>' . h(__('Database not available.')) . '</p>'; return; }
+if (!ct_user_can_workspace($pdo) || !ct_user_is_site_owner($pdo)) { http_response_code(404); return; }
 ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
@@ -23,7 +24,7 @@ if ($postId <= 0 || !in_array($locale, ct_enabled_locales($pdo), true)) {
     return;
 }
 
-$stmt = $pdo->prepare("SELECT id, type, title, slug, content, status FROM posts WHERE id = ? AND type = 'theme' AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, title, slug, content, status, created_by FROM posts WHERE id = ? AND type = 'theme' AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 $source = $post ? ct_theme_section_source_resource($pdo, $post) : null;

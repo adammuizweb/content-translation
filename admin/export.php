@@ -16,9 +16,16 @@ if (!$pdo instanceof PDO) {
     http_response_code(500);
     exit('Database not available');
 }
-if (!function_exists('current_user_role') || current_user_role($pdo) !== 'admin') {
+$actorId = ct_current_user_id();
+$requiredPermissions = [
+    'core.settings.manage', 'core.posts.read', 'core.pages.read', 'core.categories.read',
+    'core.users.read', 'core.shortcodes.read', 'core.theme_content.read',
+    'core.menus.manage', 'core.sidebar.manage', 'core.themes.manage',
+];
+if (!ct_user_can_workspace($pdo)
+    || array_filter($requiredPermissions, static fn(string $permission): bool => !user_can($pdo, $actorId, $permission)) !== []) {
     http_response_code(403);
-    exit('Admin role required');
+    exit('Export permission denied');
 }
 
 try {

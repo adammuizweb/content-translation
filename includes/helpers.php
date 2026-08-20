@@ -3,6 +3,57 @@ declare(strict_types=1);
 
 // Content Translation — shared helpers
 
+function ct_current_user_id(): int {
+    return function_exists('current_user_id') ? (int)current_user_id() : (int)($_SESSION['user_id'] ?? 0);
+}
+
+function ct_user_can_workspace(PDO $pdo, ?int $userId = null): bool {
+    $userId ??= ct_current_user_id();
+    return $userId > 0 && function_exists('user_can')
+        && user_can($pdo, $userId, 'plugin.content-translation.workspace.access');
+}
+
+function ct_user_can_integration(PDO $pdo, string $corePermission, ?int $userId = null): bool {
+    $userId ??= ct_current_user_id();
+    return ct_user_can_workspace($pdo, $userId) && user_can($pdo, $userId, $corePermission);
+}
+
+function ct_user_is_site_owner(PDO $pdo, ?int $userId = null): bool {
+    $userId ??= ct_current_user_id();
+    $actor = $userId > 0 && function_exists('authorization_actor') ? authorization_actor($pdo, $userId) : null;
+    return $actor !== null && $actor['is_site_owner'] === true;
+}
+
+function ct_post_permission_key(array $post, string $action): ?string {
+    return match ((string)($post['type'] ?? '')) {
+        'article' => 'core.posts.' . $action,
+        'page' => 'core.pages.' . $action,
+        'theme' => 'core.theme_content.' . $action,
+        default => null,
+    };
+}
+
+function ct_user_can_translate_post(PDO $pdo, array $post, string $action = 'update', ?int $userId = null): bool {
+    $userId ??= ct_current_user_id();
+    if (!ct_user_can_workspace($pdo, $userId)) return false;
+    if (($post['type'] ?? '') === 'theme' && !ct_user_is_site_owner($pdo, $userId)) return false;
+    $permission = ct_post_permission_key($post, $action);
+    return $permission !== null && user_can($pdo, $userId, $permission, ['owner_id' => (int)($post['created_by'] ?? 0)]);
+}
+
+function ct_user_can_publish_post_translation(PDO $pdo, array $post, ?int $userId = null): bool {
+    if (($post['type'] ?? '') === 'theme') return ct_user_is_site_owner($pdo, $userId);
+    return ct_user_can_translate_post($pdo, $post, 'publish', $userId);
+}
+
+function ct_sanitize_translation_content(PDO $pdo, array $post, string $content, ?int $userId = null): string {
+    $userId ??= ct_current_user_id();
+    $type = (string)($post['type'] ?? '');
+    $permission = $type === 'article' ? 'core.posts.unfiltered_html' : ($type === 'page' ? 'core.pages.unfiltered_html' : '');
+    if ($permission === '' || user_can($pdo, $userId, $permission)) return $content;
+    return function_exists('cms_sanitize_restricted_html') ? cms_sanitize_restricted_html($content) : strip_tags($content);
+}
+
 if (!function_exists('ct_ensure_schema')) {
 
     function ct_schema_error(PDO $pdo): ?string {
@@ -347,8 +398,8 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
-    function ct_save_translation_locked(PDO $pdo, int $postId, string $locale, string $loadedState, array $data): array {
-        if ($postId <= 0 || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
+    function ct_save_translation_locked(PDO $pdo, int $postId, string $locale, string $loadedState, array $data, int $actorId): array {
+        if ($postId <= 0 || $actorId <= 0 || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
             || !function_exists('ct_translation_row_state_token')) {
             throw new InvalidArgumentException('Editor lock state is invalid. Reload the editor.');
         }
@@ -356,15 +407,25 @@ if (!function_exists('ct_ensure_schema')) {
         $ownsTransaction = !$pdo->inTransaction();
         if ($ownsTransaction) $pdo->beginTransaction();
         try {
-            $source = $pdo->prepare('SELECT id FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
+            if (!authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
+            $source = $pdo->prepare('SELECT id, type, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
             $source->execute([$postId]);
-            if (!$source->fetchColumn()) throw new RuntimeException('Source post no longer exists.');
+            $sourcePost = $source->fetch(PDO::FETCH_ASSOC);
+            if (!$sourcePost) throw new RuntimeException('Source post no longer exists.');
+            if (!authorization_lock_owner_contexts($pdo, [(int)$sourcePost['created_by']])
+                || !ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
+                throw new RuntimeException('Content translation permission denied.');
+            }
 
             $currentStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE');
             $currentStmt->execute([$postId, $locale]);
             $current = $currentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
             if (!hash_equals($loadedState, ct_translation_row_state_token($current))) {
                 throw new RuntimeException('This translation was changed by another editor. Reload before saving.');
+            }
+            if (((string)($data['status'] ?? 'published') === 'published' || (string)($current['status'] ?? '') === 'published')
+                && !ct_user_can_publish_post_translation($pdo, $sourcePost, $actorId)) {
+                throw new RuntimeException('Publishing translation permission denied.');
             }
             if (!ct_save_translation($pdo, $postId, $locale, $data)) throw new RuntimeException('Translation save failed.');
 
@@ -385,11 +446,19 @@ if (!function_exists('ct_ensure_schema')) {
         return $translation && ct_post_translation_is_complete($pdo, $translation) ? $translation : null;
     }
 
-    function ct_delete_translation(PDO $pdo, int $postId, string $locale, string $loadedState): bool {
+    function ct_delete_translation(PDO $pdo, int $postId, string $locale, string $loadedState, int $actorId): bool {
         ct_ensure_schema($pdo);
         $ownsTransaction = !$pdo->inTransaction();
         try {
             if ($ownsTransaction) $pdo->beginTransaction();
+            if ($actorId <= 0 || !authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
+            $sourceStmt = $pdo->prepare('SELECT id, type, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
+            $sourceStmt->execute([$postId]);
+            $sourcePost = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$sourcePost || !authorization_lock_owner_contexts($pdo, [(int)$sourcePost['created_by']])
+                || !ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
+                throw new RuntimeException('Content translation permission denied.');
+            }
             $currentStmt = $pdo->prepare("SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE");
             $currentStmt->execute([$postId, $locale]);
             $current = $currentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -397,6 +466,10 @@ if (!function_exists('ct_ensure_schema')) {
                 || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
                 || !hash_equals($loadedState, ct_translation_row_state_token($current))) {
                 throw new RuntimeException('This translation was changed by another editor. Reload before deleting.');
+            }
+            if ((string)($current['status'] ?? '') === 'published'
+                && !ct_user_can_publish_post_translation($pdo, $sourcePost, $actorId)) {
+                throw new RuntimeException('Publishing translation permission denied.');
             }
             $stmt = $pdo->prepare("DELETE FROM post_translations WHERE post_id = ? AND locale = ?");
             $ok = $stmt->execute([$postId, $locale]);
