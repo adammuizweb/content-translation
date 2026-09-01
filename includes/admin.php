@@ -6,10 +6,43 @@ declare(strict_types=1);
 // ─── Ensure schema exists when in admin ───
 add_action('admin_init', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
-    if ($pdo instanceof PDO && ct_user_can_workspace($pdo)) {
-        ct_ensure_schema($pdo);
-        ct_seed_shortcode_preset_ui_translations($pdo);
+    if (!$pdo instanceof PDO || !ct_user_can_workspace($pdo)) return;
+    ct_ensure_schema($pdo);
+    ct_seed_shortcode_preset_ui_translations($pdo);
+
+    $page = trim((string)($_GET['page'] ?? ''), '/');
+    $types = [
+        'admin/posts/edit' => 'article',
+        'admin/pages/edit' => 'page',
+    ];
+    if (!isset($types[$page])) return;
+
+    $postId = (int)($_GET['id'] ?? 0);
+    if ($postId <= 0) return;
+    $stmt = $pdo->prepare('SELECT id, type, meta, status, created_by FROM posts WHERE id = ? AND type = ? AND is_deleted = 0 LIMIT 1');
+    $stmt->execute([$postId, $types[$page]]);
+    $post = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) return;
+
+    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    if ($locale === ct_post_source_locale($pdo, $post)
+        || !in_array($locale, ct_post_translation_locales($pdo, $post), true)) {
+        return;
     }
+
+    $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
+    $defaultReturnTo = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/index' : 'admin/posts/index');
+    $returnTo = function_exists('adiwira_safe_return_to')
+        ? adiwira_safe_return_to($_GET['return_to'] ?? null, $defaultReturnTo)
+        : $defaultReturnTo;
+    $target = $base . '/?' . http_build_query([
+        'page' => 'admin/tools/content-translation/edit',
+        'post_id' => $postId,
+        'locale' => $locale,
+        'return_to' => $returnTo,
+    ]);
+    header('Location: ' . $target, true, 302);
+    exit;
 });
 
 if (!function_exists('ct_sync_author_locale_post')) {

@@ -14,6 +14,9 @@ ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
+$returnUrl = function_exists('adiwira_safe_return_to')
+    ? adiwira_safe_return_to($_GET['return_to'] ?? null, $overviewUrl)
+    : $overviewUrl;
 $saveUrl = $base . '/?page=admin/tools/content-translation/api/save&action=api';
 $deleteUrl = $base . '/?page=admin/tools/content-translation/api/delete&action=api';
 
@@ -40,7 +43,7 @@ if (!in_array($locale, $locales, true)) {
 }
 
 if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$post['content']) !== null) {
-    $packageEditor = $base . '/?page=admin/tools/content-translation/theme-section-edit&post_id=' . $postId . '&locale=' . urlencode($locale);
+    $packageEditor = $base . '/?page=admin/tools/content-translation/theme-section-edit&post_id=' . $postId . '&locale=' . urlencode($locale) . '&return_to=' . rawurlencode($returnUrl);
     if (!headers_sent()) {
         header('Location: ' . $packageEditor, true, 302);
         exit;
@@ -71,7 +74,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
       </p>
     </div>
     <div class="ct-header-actions">
-      <a class="btn" href="<?= h($overviewUrl) ?>"><?= __('Back') ?></a>
+      <a class="btn" href="<?= h($returnUrl) ?>"><?= __('Back') ?></a>
       <?php if ($publishedTranslation): ?>
         <a class="btn" href="<?= h($previewUrl) ?>" target="_blank" rel="noopener"><?= __('Preview') ?></a>
       <?php endif; ?>
@@ -243,7 +246,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
       const res = await fetch('<?= $deleteUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
       const data = await res.json();
       if (data.success) {
-        window.location.href = '<?= $overviewUrl ?>';
+        window.location.href = <?= json_encode($returnUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       } else {
         closeModal();
         notify('error', data.error || '<?= __('Delete failed.') ?>');

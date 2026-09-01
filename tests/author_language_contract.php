@@ -60,6 +60,10 @@ $check(str_contains($admin, "add_action('admin_footer'")
 $check(str_contains($admin, "add_filter('post_list_join'")
     && str_contains($admin, "add_filter('post_list_select'")
     && str_contains($admin, 'ct_post_list_display'), 'Core post list uses the current dashboard user writing locale');
+$check(str_contains($admin, "'admin/posts/edit' => 'article'")
+    && str_contains($admin, "'admin/pages/edit' => 'page'")
+    && str_contains($admin, "'page' => 'admin/tools/content-translation/edit'")
+    && str_contains($admin, "header('Location: ' . \$target, true, 302)"), 'source editor routes open the dashboard user writing locale');
 $check(str_contains($frontend, "$.content_translation.authoring_locale")
     && str_contains($frontend, 'ct_post_authoring_locale')
     && str_contains($frontend, 'header(\'Location: \' . $target, true, 301)'), 'source shadows are excluded and canonicalized to locale URLs');
@@ -68,7 +72,8 @@ $check(str_contains($frontend, 'ct_default_search')
     && str_contains($frontend, 'ct_post_locale_is_published'), 'published default translations drive search, permalinks, and language alternatives');
 $check(str_contains($edit, 'ct_post_translation_locales')
     && str_contains($index, 'ct_post_translation_locales')
-    && str_contains($save, 'ct_post_translation_locales'), 'editor, overview, and save API share per-post translation targets');
+    && str_contains($save, 'ct_post_translation_locales')
+    && str_contains($edit, 'adiwira_safe_return_to'), 'editor, overview, and save API share per-post translation targets and safe return navigation');
 $check(str_contains($save, 'ct_translation_slug_conflict')
     && str_contains($frontend, "content_route_resolve(\$pdo, \$path, '', 'public')"), 'default translations cannot shadow canonical Core routes');
 $check(str_contains($settings, 'ct_post_authoring_locales_in_use')
