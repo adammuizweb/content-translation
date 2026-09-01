@@ -559,7 +559,10 @@ add_filter('content_permalink', function ($url, $post, $type) {
     $overlayLocale = trim((string)($post['ct_locale'] ?? ''));
     $overlaySlug = trim((string)($post['ct_translated_slug'] ?? ''));
     if ($overlayLocale !== '' && $overlaySlug !== '' && (!$locale || $locale === $overlayLocale)) {
-        return ct_post_url($overlaySlug, $overlayLocale);
+        $overlayTranslation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $overlayLocale);
+        if ($overlayTranslation && (string)$overlayTranslation['slug'] === $overlaySlug) {
+            return ct_post_url($overlaySlug, $overlayLocale);
+        }
     }
     if (!$locale) {
         $authoringLocale = ct_post_authoring_locale($pdo, $post);

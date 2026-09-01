@@ -216,6 +216,39 @@ add_action('admin_footer', function (): void {
     echo '<script>(function(){var form=document.getElementById(' . json_encode($formId) . ');if(!form)return;var notice=document.createElement("div");notice.className="ct-author-language-notice";notice.innerHTML="<strong>"+' . json_encode($title, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '+"</strong><span>"+' . json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '+"</span>";form.prepend(notice)})()</script>';
 });
 
+// Show each dashboard user the published representation for their configured
+// writing locale while retaining Core's source row as the fallback.
+add_filter('post_list_join', function (string $join): string {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo instanceof PDO) return $join;
+    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+    $localeSql = $pdo->quote($locale);
+    $sourceCondition = $locale === $default
+        ? " AND JSON_EXTRACT(p.meta, '$.content_translation.authoring_locale') IS NOT NULL"
+        : '';
+
+    return $join . " LEFT JOIN post_translations ct_post_list_display
+        ON ct_post_list_display.post_id = p.id
+        AND ct_post_list_display.locale = {$localeSql}
+        AND ct_post_list_display.status = 'published'
+        AND TRIM(ct_post_list_display.title) <> ''
+        AND TRIM(ct_post_list_display.slug) <> ''{$sourceCondition}";
+});
+
+add_filter('post_list_select', function (string $select): string {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo instanceof PDO) return $select;
+    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $localeSql = $pdo->quote($locale);
+
+    return $select . ",
+        CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.title ELSE p.title END AS title,
+        CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE p.slug END AS slug,
+        CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN {$localeSql} ELSE NULL END AS ct_locale,
+        CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE NULL END AS ct_translated_slug";
+});
+
 add_action('site_settings_after_general', function ($pdo) {
     if (!$pdo instanceof PDO || !ct_user_can_workspace($pdo)
         || !user_can($pdo, ct_current_user_id(), 'core.settings.manage')) return;

@@ -37,6 +37,9 @@ function __(string $text): string { return $text; }
 function add_action(string $hook, callable $callback, int $priority = 10, int $acceptedArgs = 1): void {
     $GLOBALS['authorLanguageActions'][$hook][$priority][] = $callback;
 }
+function add_filter(string $hook, callable $callback, int $priority = 10, int $acceptedArgs = 1): void {
+    $GLOBALS['authorLanguageFilters'][$hook][$priority][] = $callback;
+}
 require_once $root . '/includes/helpers.php';
 $pdo = new PDO('sqlite::memory:');
 
@@ -54,6 +57,9 @@ $check(str_contains($admin, "add_action('admin_post_after_add'")
 $check(str_contains($admin, "add_action('admin_footer'")
     && str_contains($admin, 'ct-author-language-notice')
     && str_contains($admin, 'static $rendered = false'), 'standard Add Post UI identifies the assigned writing language once');
+$check(str_contains($admin, "add_filter('post_list_join'")
+    && str_contains($admin, "add_filter('post_list_select'")
+    && str_contains($admin, 'ct_post_list_display'), 'Core post list uses the current dashboard user writing locale');
 $check(str_contains($frontend, "$.content_translation.authoring_locale")
     && str_contains($frontend, 'ct_post_authoring_locale')
     && str_contains($frontend, 'header(\'Location: \' . $target, true, 301)'), 'source shadows are excluded and canonicalized to locale URLs');

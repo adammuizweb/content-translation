@@ -8,6 +8,7 @@
 - Route alternate-locale authored posts to their locale URL until a reviewed default-language translation is published.
 - Use a published default-language translation for unprefixed URLs, collections, search, hreflang links, and language switching.
 - Reject translated slug conflicts, quarantine failed source synchronization as draft, and block unsafe locale or plugin removal while alternate-language sources remain.
+- Display published post titles and links in each dashboard user's configured writing locale.
 
 ## 1.12.2 - 2026-08-20
 
