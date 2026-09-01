@@ -134,7 +134,7 @@ if ($typeFilter === 'theme') {
     $lastMatches = [];
     $contentStmt = $pdo->prepare('SELECT content FROM posts WHERE id = ? LIMIT 1');
     do {
-        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.status, p.updated_at,
+        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status, p.updated_at,
                 CASE WHEN LOCATE('widget:theme_section', p.content) > 0 THEN 1 ELSE 0 END AS package_candidate
             FROM posts p WHERE $where AND (p.updated_at < :ct_cursor_before OR (p.updated_at = :ct_cursor_equal AND p.id < :ct_cursor_id))
             ORDER BY p.updated_at DESC, p.id DESC LIMIT $batchSize");
@@ -171,7 +171,7 @@ if ($typeFilter === 'theme') {
     $countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts p WHERE $where");
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
-    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.status FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
+    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
     $listStmt->execute($params);
     $posts = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     $totalPages = max(1, (int)ceil($total / $perPage));
@@ -241,7 +241,7 @@ $flashType = $_GET['flash_type'] ?? 'success';
           <td class="ct-translations-col">
             <select class="ct-translation-select" aria-label="<?= h(__('Translations')) ?>" onchange="if(this.value) window.location.href=this.value">
               <option value=""><?= __('Choose language…') ?></option>
-              <?php foreach ($locales as $locale): ?>
+              <?php foreach (ct_post_translation_locales($pdo, $post) as $locale): ?>
                 <?php $status = $statuses[(int)$post['id']][$locale] ?? null; ?>
                 <?php $label = strtoupper($locale) . ' — ' . ($status === 'draft' ? __('Draft') : ($status !== null ? __('Edit') : __('Add'))); ?>
                 <option value="<?= h($editUrl . '&post_id=' . (int)$post['id'] . '&locale=' . urlencode($locale)) ?>"><?= h($label) ?></option>

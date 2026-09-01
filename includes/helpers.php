@@ -252,6 +252,139 @@ if (!function_exists('ct_ensure_schema')) {
         return settings_set($pdo, 'content_translation_locales', json_encode($clean));
     }
 
+    function ct_author_locale_preferences(PDO $pdo): array {
+        $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_author_locales', '') : '';
+        $stored = is_string($raw) ? json_decode($raw, true) : [];
+        if (!is_array($stored)) return [];
+
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        $enabled = ct_enabled_locales($pdo);
+        $preferences = [];
+        foreach ($stored as $userId => $locale) {
+            $userId = (int)$userId;
+            $locale = trim((string)$locale);
+            if ($userId <= 0 || $locale === '' || $locale === $default || !in_array($locale, $enabled, true)) continue;
+            $preferences[$userId] = $locale;
+        }
+        return $preferences;
+    }
+
+    function ct_author_default_locale(PDO $pdo, int $userId): string {
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        if ($userId <= 0) return $default;
+        $preferences = ct_author_locale_preferences($pdo);
+        return $preferences[$userId] ?? $default;
+    }
+
+    function ct_set_author_locale_preferences(PDO $pdo, array $preferences): bool {
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        $enabled = ct_enabled_locales($pdo);
+        $clean = [];
+        foreach ($preferences as $userId => $locale) {
+            $userId = (int)$userId;
+            $locale = trim((string)$locale);
+            if ($userId <= 0 || $locale === '' || $locale === $default || !in_array($locale, $enabled, true)) continue;
+            $clean[(string)$userId] = $locale;
+        }
+        return function_exists('settings_set')
+            && settings_set($pdo, 'content_translation_author_locales', json_encode($clean, JSON_UNESCAPED_SLASHES));
+    }
+
+    function ct_post_authoring_locale(PDO $pdo, array $post): ?string {
+        static $cache = [];
+        $postId = (int)($post['id'] ?? 0);
+        if (!array_key_exists('meta', $post) && $postId > 0) {
+            if (!array_key_exists($postId, $cache)) {
+                $stmt = $pdo->prepare('SELECT meta FROM posts WHERE id = ? LIMIT 1');
+                $stmt->execute([$postId]);
+                $cache[$postId] = $stmt->fetchColumn();
+            }
+            $post['meta'] = $cache[$postId];
+        }
+
+        $meta = $post['meta'] ?? null;
+        if (is_string($meta) && $meta !== '') $meta = json_decode($meta, true);
+        if (!is_array($meta)) return null;
+        $locale = trim((string)($meta['content_translation']['authoring_locale'] ?? ''));
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        return $locale !== '' && $locale !== $default ? $locale : null;
+    }
+
+    function ct_content_locales(PDO $pdo): array {
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        return array_values(array_unique(array_merge([$default], ct_enabled_locales($pdo))));
+    }
+
+    function ct_post_source_locale(PDO $pdo, array $post): string {
+        return ct_post_authoring_locale($pdo, $post)
+            ?? (function_exists('content_default_locale') ? content_default_locale() : 'en');
+    }
+
+    function ct_post_translation_locales(PDO $pdo, array $post): array {
+        $sourceLocale = ct_post_source_locale($pdo, $post);
+        return array_values(array_filter(
+            ct_content_locales($pdo),
+            static fn(string $locale): bool => $locale !== $sourceLocale
+        ));
+    }
+
+    function ct_translation_slug_lock_name(string $locale, string $slug): string {
+        return 'ct_slug_' . substr(hash('sha256', $locale . ':' . $slug), 0, 56);
+    }
+
+    function ct_translation_slug_conflict(PDO $pdo, int $postId, string $locale, string $slug): ?string {
+        $stmt = $pdo->prepare('SELECT post_id FROM post_translations WHERE locale = ? AND slug = ? AND post_id != ? LIMIT 1');
+        $stmt->execute([$locale, $slug, $postId]);
+        if ($stmt->fetchColumn()) return 'translation';
+
+        if (function_exists('content_route_path_conflict')) {
+            $routeLocale = $locale === (function_exists('content_default_locale') ? content_default_locale() : 'en') ? '' : $locale;
+            if (content_route_path_conflict($pdo, $slug, $routeLocale, $postId) !== null) return 'route';
+
+            // An alias owned by this post would redirect to its canonical route,
+            // while post_data redirects back to the translated slug.
+            $route = $pdo->prepare('SELECT is_canonical FROM content_routes WHERE post_id = ? AND locale = ? AND path = ? LIMIT 1');
+            $route->execute([$postId, $routeLocale, $slug]);
+            $isCanonical = $route->fetchColumn();
+            if ($isCanonical !== false && (int)$isCanonical !== 1) return 'route';
+        }
+
+        return null;
+    }
+
+    function ct_post_authoring_locales_in_use(PDO $pdo): array {
+        $stmt = $pdo->query("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(meta, '$.content_translation.authoring_locale')) AS locale FROM posts WHERE type = 'article' AND is_deleted = 0 AND JSON_VALID(meta) AND JSON_EXTRACT(meta, '$.content_translation.authoring_locale') IS NOT NULL");
+        return array_values(array_filter(array_map(
+            static fn(mixed $locale): string => trim((string)$locale),
+            $stmt->fetchAll(PDO::FETCH_COLUMN)
+        )));
+    }
+
+    function ct_post_locale_is_published(PDO $pdo, array $post, string $locale): bool {
+        $locale = trim($locale);
+        if (!in_array($locale, ct_content_locales($pdo), true)) return false;
+
+        $sourceLocale = ct_post_source_locale($pdo, $post);
+        if ($locale !== $sourceLocale) {
+            return ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $locale) !== null;
+        }
+        if ((string)($post['status'] ?? '') !== 'published') return false;
+
+        // A non-default source is mirrored so the localized router can resolve it.
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        return $sourceLocale === $default
+            || ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $sourceLocale) !== null;
+    }
+
+    function ct_post_meta_with_authoring_locale(array $post, string $locale): string {
+        $meta = $post['meta'] ?? null;
+        if (is_string($meta) && $meta !== '') $meta = json_decode($meta, true);
+        if (!is_array($meta)) $meta = [];
+        if (!is_array($meta['content_translation'] ?? null)) $meta['content_translation'] = [];
+        $meta['content_translation']['authoring_locale'] = $locale;
+        return json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    }
+
     function ct_default_locale_direction(string $locale): string {
         $language = strtolower((string)strtok($locale, '-'));
         return in_array($language, ['ar', 'fa', 'he', 'ps', 'ur', 'yi'], true) ? 'rtl' : 'ltr';
@@ -408,10 +541,13 @@ if (!function_exists('ct_ensure_schema')) {
         if ($ownsTransaction) $pdo->beginTransaction();
         try {
             if (!authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
-            $source = $pdo->prepare('SELECT id, type, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
+            $source = $pdo->prepare('SELECT id, type, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
             $source->execute([$postId]);
             $sourcePost = $source->fetch(PDO::FETCH_ASSOC);
             if (!$sourcePost) throw new RuntimeException('Source post no longer exists.');
+            if (!in_array($locale, ct_post_translation_locales($pdo, $sourcePost), true)) {
+                throw new RuntimeException('That locale is not available for this source post.');
+            }
             if (!authorization_lock_owner_contexts($pdo, [(int)$sourcePost['created_by']])
                 || !ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
                 throw new RuntimeException('Content translation permission denied.');
@@ -446,15 +582,30 @@ if (!function_exists('ct_ensure_schema')) {
         return $translation && ct_post_translation_is_complete($pdo, $translation) ? $translation : null;
     }
 
+    function ct_get_public_post_translation(PDO $pdo, int $postId, string $locale): ?array {
+        static $cache = [];
+        $key = spl_object_id($pdo) . ':' . $postId . ':' . $locale;
+        if (array_key_exists($key, $cache)) return $cache[$key];
+
+        $translation = ct_get_published_translation($pdo, $postId, $locale);
+        if (!$translation) return $cache[$key] = null;
+        $slug = trim((string)($translation['slug'] ?? ''));
+        if ($slug === '') return $cache[$key] = $translation;
+        return $cache[$key] = (ct_translation_slug_conflict($pdo, $postId, $locale, $slug) === null ? $translation : null);
+    }
+
     function ct_delete_translation(PDO $pdo, int $postId, string $locale, string $loadedState, int $actorId): bool {
         ct_ensure_schema($pdo);
         $ownsTransaction = !$pdo->inTransaction();
         try {
             if ($ownsTransaction) $pdo->beginTransaction();
             if ($actorId <= 0 || !authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
-            $sourceStmt = $pdo->prepare('SELECT id, type, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
+            $sourceStmt = $pdo->prepare('SELECT id, type, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
             $sourceStmt->execute([$postId]);
             $sourcePost = $sourceStmt->fetch(PDO::FETCH_ASSOC);
+            if ($sourcePost && !in_array($locale, ct_post_translation_locales($pdo, $sourcePost), true)) {
+                throw new RuntimeException('That locale is not available for this source post.');
+            }
             if (!$sourcePost || !authorization_lock_owner_contexts($pdo, [(int)$sourcePost['created_by']])
                 || !ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
                 throw new RuntimeException('Content translation permission denied.');
@@ -548,7 +699,7 @@ if (!function_exists('ct_ensure_schema')) {
         $locale ??= $GLOBALS['ct_request_locale'] ?? null;
         if (!$locale) return $post;
 
-        $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), $locale);
+        $translation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $locale);
         if (!$translation) return $post;
 
         foreach (['title', 'content'] as $field) {

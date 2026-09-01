@@ -31,17 +31,16 @@ if (preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1) {
     return;
 }
 
-if (!in_array($locale, ct_enabled_locales($pdo), true)) {
-    echo json_encode(['error' => 'Locale not enabled']);
-    return;
-}
-
 $actorId = ct_current_user_id();
-$stmt = $pdo->prepare("SELECT id, type, content, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, content, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $sourcePost = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$sourcePost || !in_array((string)($sourcePost['type'] ?? ''), ['article', 'page', 'theme'], true)) {
     echo json_encode(['error' => 'Post not found']);
+    return;
+}
+if (!in_array($locale, ct_post_translation_locales($pdo, $sourcePost), true)) {
+    echo json_encode(['error' => 'Locale not available for this source post']);
     return;
 }
 if (!ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
@@ -94,7 +93,7 @@ if ($status === 'published' && ($title === '' || (!$isHomepage && $slug === ''))
 $slugLock = '';
 try {
     if ($slug !== '') {
-        $slugLock = 'ct_slug_' . substr(hash('sha256', $locale . ':' . $slug), 0, 56);
+        $slugLock = ct_translation_slug_lock_name($locale, $slug);
         $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)');
         $lock->execute([$slugLock]);
         if ((int)$lock->fetchColumn() !== 1) {
@@ -110,7 +109,7 @@ try {
             function_exists('get_posts_list_routes') ? get_posts_list_routes($pdo) : ['artikel'],
             function_exists('get_pages_list_routes') ? get_pages_list_routes($pdo) : ['halaman'],
             function_exists('get_category_routes') ? get_category_routes($pdo) : ['category'],
-            function_exists('ct_enabled_locales') ? ct_enabled_locales($pdo) : [],
+            function_exists('ct_content_locales') ? ct_content_locales($pdo) : ct_enabled_locales($pdo),
             ['author']
         );
         $routeReserved = in_array($firstSegment, $reservedRoutes, true)
@@ -125,6 +124,12 @@ try {
         );
         if ($routeReserved) {
             echo json_encode(['error' => __('Slug uses a reserved public route')]);
+            return;
+        }
+
+        $slugConflict = ct_translation_slug_conflict($pdo, $postId, $locale, $slug);
+        if ($slugConflict === 'route') {
+            echo json_encode(['error' => __('Slug conflicts with an existing public route')]);
             return;
         }
 

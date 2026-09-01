@@ -25,17 +25,17 @@ if ($postId <= 0 || $locale === '') {
     return;
 }
 
-$locales = ct_enabled_locales($pdo);
-if (!in_array($locale, $locales, true)) {
-    echo '<p>' . __('Locale not enabled.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
-    return;
-}
-
-$stmt = $pdo->prepare("SELECT id, type, title, slug, content, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) {
     echo '<p>' . __('Post not found.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
+    return;
+}
+
+$locales = ct_post_translation_locales($pdo, $post);
+if (!in_array($locale, $locales, true)) {
+    echo '<p>' . __('Locale not available for this source post.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
     return;
 }
 
@@ -52,7 +52,7 @@ if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$pos
 
 $translationRow = ct_get_translation($pdo, $postId, $locale);
 $translation = $translationRow ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published'];
-$defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
+$sourceLocale = ct_post_source_locale($pdo, $post);
 $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$post['content'])
     || ct_content_requires_codemirror((string)$translation['content']);
@@ -124,7 +124,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
     </section>
 
     <details class="ct-panel ct-source-panel">
-      <summary><?= __('Original') ?> (<?= h(strtoupper($defaultLocale)) ?>)</summary>
+      <summary><?= __('Original') ?> (<?= h(strtoupper($sourceLocale)) ?>)</summary>
       <div class="ct-source-panel__body">
         <div class="ct-field">
           <label><?= __('Title') ?></label>

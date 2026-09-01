@@ -294,6 +294,16 @@
 .ct-direction-toggle b { display: block; padding: .42rem .55rem; border: 1px solid var(--adam-border-2, rgba(127,127,127,.42)); border-radius: 6px; color: var(--adam-muted, inherit); font: 700 .72rem/1 ui-monospace, monospace; letter-spacing: .04em; }
 .ct-direction-toggle input:checked + b { border-color: var(--adam-primary, #2563eb); background: color-mix(in srgb, var(--adam-primary, #2563eb) 13%, var(--adam-card, transparent)); color: var(--adam-primary, #2563eb); }
 .ct-settings-card--sitemap { border-left: 3px solid var(--adam-primary, #2563eb); }
+.ct-settings-card--authors { border-left: 3px solid color-mix(in srgb, var(--adam-primary, #2563eb) 65%, #16a34a); }
+.ct-author-language-list { display: grid; gap: .55rem; }
+.ct-author-language-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem .8rem; border: 1px solid var(--adam-border, rgba(127,127,127,.24)); border-radius: 9px; }
+.ct-author-language-identity { display: grid; min-width: 0; gap: .12rem; }
+.ct-author-language-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-author-language-identity small { color: var(--adam-muted, inherit); }
+.ct-author-language-row select { min-width: 150px; min-height: 2.45rem; padding: .4rem .65rem; border: 1px solid var(--adam-border-2, rgba(127,127,127,.42)); border-radius: 7px; color: inherit; background: var(--adam-card, transparent); font: inherit; }
+.ct-author-language-notice { display: grid; gap: .2rem; margin: 0 0 1rem; padding: .85rem 1rem; border: 1px solid color-mix(in srgb, var(--adam-primary, #2563eb) 42%, transparent); border-left: 4px solid var(--adam-primary, #2563eb); border-radius: 8px; background: color-mix(in srgb, var(--adam-primary, #2563eb) 8%, var(--adam-card, transparent)); }
+.ct-author-language-notice strong { font-size: .9rem; }
+.ct-author-language-notice span { color: var(--adam-muted, inherit); font-size: .82rem; line-height: 1.45; }
 .ct-add-language-controls { display: flex; align-items: center; gap: .65rem; }
 .ct-add-language-controls select,
 .ct-add-language-controls input {
@@ -403,6 +413,8 @@
   .ct-table:not(.ct-theme-sections-table) td:nth-child(3) { display: none; }
   .ct-settings-grid { grid-template-columns: 1fr; }
   .ct-add-language-controls { align-items: stretch; flex-direction: column; }
+  .ct-author-language-row { align-items: stretch; flex-direction: column; }
+  .ct-author-language-row select { width: 100%; }
   .ct-add-language-or { text-align: center; }
   .ct-settings-actions { justify-content: stretch; }
   .ct-settings-actions .btn { width: 100%; }

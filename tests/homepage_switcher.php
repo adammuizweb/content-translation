@@ -29,6 +29,9 @@ function content_default_locale(): string {
 function ct_get_published_translation(PDO $pdo, int $postId, string $locale): ?array {
     return ['post_id' => $postId, 'locale' => $locale, 'status' => 'published'];
 }
+function ct_get_public_post_translation(PDO $pdo, int $postId, string $locale): ?array {
+    return ct_get_published_translation($pdo, $postId, $locale);
+}
 function ct_homepage_url(?string $locale = null): string {
     return $locale ? '/' . $locale . '/' : '/';
 }

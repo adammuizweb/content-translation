@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.13.0 - 2026-09-01
+
+- Add per-author writing-language defaults to Translation Settings.
+- Keep alternate-locale authors on the standard post editor while synchronizing their source shadow and localized article.
+- Offer the site default and other enabled languages as translation targets while excluding the authored source language.
+- Route alternate-locale authored posts to their locale URL until a reviewed default-language translation is published.
+- Use a published default-language translation for unprefixed URLs, collections, search, hreflang links, and language switching.
+- Reject translated slug conflicts, quarantine failed source synchronization as draft, and block unsafe locale or plugin removal while alternate-language sources remain.
+
 ## 1.12.2 - 2026-08-20
 
 - Honor host-provided locales for search forms, translated-field matching, result overlays, pagination, and canonical URLs.

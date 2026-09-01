@@ -15,7 +15,27 @@ add_filter('router_path', function ($path) {
     if ($first === false) return $path;
 
     $locales = ct_enabled_locales($pdo);
-    if (!in_array($first, $locales, true)) return $path;
+    if (!in_array($first, $locales, true)) {
+        if (function_exists('content_route_resolve')) {
+            try {
+                if (is_array(content_route_resolve($pdo, $path, '', 'public'))) return $path;
+            } catch (Throwable $error) {
+                return $path;
+            }
+        }
+        // A default-locale translation of a non-default source has no locale
+        // prefix. Resolve its translated slug back to the stored source row.
+        $defaultLocale = content_default_locale();
+        $translation = ct_find_translation_by_slug($pdo, $defaultLocale, trim($path, '/'));
+        if (!$translation) return $path;
+
+        $stmt = $pdo->prepare("SELECT id, meta FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+        $stmt->execute([(int)$translation['post_id']]);
+        $post = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$post || ct_post_source_locale($pdo, $post) === $defaultLocale) return $path;
+
+        return ct_original_slug($pdo, (int)$translation['post_id']) ?? $path;
+    }
 
     $rest = ltrim(substr($path, strlen($first)), '/');
     if ($rest === '') {
@@ -27,7 +47,7 @@ add_filter('router_path', function ($path) {
         }
         $homepage = ct_homepage_theme_post($pdo);
         if ($homepage) {
-            if (!ct_get_published_translation($pdo, (int)$homepage['id'], $first)) ct_render_not_found();
+            if (!ct_get_public_post_translation($pdo, (int)$homepage['id'], $first)) ct_render_not_found();
             if (function_exists('set_locale')) set_locale($first);
             $GLOBALS['ct_request_locale'] = $first;
             $GLOBALS['ct_current_post'] = $homepage;
@@ -91,7 +111,7 @@ add_filter('router_path', function ($path) {
             $localizedRoute = null;
         }
         if (is_array($localizedRoute)) {
-            if (!ct_get_published_translation($pdo, (int)$localizedRoute['id'], $first)) ct_render_not_found();
+            if (!ct_get_public_post_translation($pdo, (int)$localizedRoute['id'], $first)) ct_render_not_found();
             if (function_exists('set_locale')) set_locale($first);
             $GLOBALS['ct_request_locale'] = $first;
             return $rest;
@@ -151,10 +171,38 @@ add_filter('post_data', function ($post, $pdo) {
     $id = (int)($post['id'] ?? 0);
     if ($id <= 0) return $post;
 
+    $requestLocale = $GLOBALS['ct_request_locale'] ?? null;
+    $authoringLocale = $requestLocale ? null : ct_post_authoring_locale($pdo, $post);
+    if ($authoringLocale !== null) {
+        $defaultLocale = content_default_locale();
+        $defaultTranslation = ct_get_public_post_translation($pdo, $id, $defaultLocale);
+        if ($defaultTranslation) {
+            $target = ct_post_url((string)$defaultTranslation['slug']);
+            $requestPath = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
+            if (rtrim($requestPath, '/') !== rtrim($target, '/')) {
+                if (!headers_sent()) {
+                    header('Location: ' . $target, true, 301);
+                    exit;
+                }
+                ct_render_not_found();
+            }
+            $post = ct_overlay_published_translation($post, $pdo, $defaultLocale);
+        } else {
+            $translation = ct_get_public_post_translation($pdo, $id, $authoringLocale);
+            if (!$translation) ct_render_not_found();
+            $target = ct_post_url((string)($translation['slug'] ?? '') ?: (string)($post['slug'] ?? ''), $authoringLocale);
+            if (!headers_sent()) {
+                header('Location: ' . $target, true, 301);
+                exit;
+            }
+            ct_render_not_found();
+        }
+    }
+
     // Always capture the current post so hreflang/switcher work on default-locale pages too
     $GLOBALS['ct_current_post'] = $post;
 
-    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    $locale = $requestLocale;
     if (!$locale) return $post;
 
     return ct_overlay_published_translation($post, $pdo, $locale);
@@ -164,12 +212,20 @@ add_filter('post_data', function ($post, $pdo) {
 add_filter('widget_recent_posts', function ($items, $pdo) {
     if (!is_array($items) || !$pdo instanceof PDO) return $items;
     $locale = $GLOBALS['ct_request_locale'] ?? null;
-    if (!$locale) return $items;
-
     $translated = [];
     foreach ($items as $item) {
         if (!is_array($item)) continue;
-        if (!ct_get_published_translation($pdo, (int)($item['id'] ?? 0), $locale)) continue;
+        if (!$locale) {
+            if (ct_post_authoring_locale($pdo, $item) === null) {
+                $translated[] = $item;
+                continue;
+            }
+            $defaultLocale = content_default_locale();
+            if (!ct_get_public_post_translation($pdo, (int)($item['id'] ?? 0), $defaultLocale)) continue;
+            $translated[] = ct_overlay_published_translation($item, $pdo, $defaultLocale);
+            continue;
+        }
+        if (!ct_get_public_post_translation($pdo, (int)($item['id'] ?? 0), $locale)) continue;
         $translated[] = ct_overlay_published_translation($item, $pdo, $locale);
     }
     return $translated;
@@ -227,14 +283,39 @@ add_filter('search_base_url', function ($base, $pdo, $query) {
 
 add_filter('search_query_parts', function ($parts, $pdo, $query) {
     $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
-    if (!$locale || !is_array($parts)) return $parts;
+    if (!is_array($parts)) return $parts;
+    if (!$locale) {
+        if (is_array($parts['where'] ?? null)) {
+            $sourceSearch = (string)($parts['where'][3] ?? '1=1');
+            $marker = "JSON_EXTRACT(posts.meta, '$.content_translation.authoring_locale')";
+            $parts['where'][3] = "(({$marker} IS NULL AND ({$sourceSearch})) OR ({$marker} IS NOT NULL AND EXISTS (SELECT 1 FROM post_translations ct_default_search WHERE ct_default_search.post_id = posts.id AND ct_default_search.locale = :ct_default_search_locale AND ct_default_search.status = 'published' AND (ct_default_search.title LIKE :kw OR ct_default_search.content LIKE :kw))))";
+            $parts['where'][] = "({$marker} IS NULL OR EXISTS (SELECT 1 FROM post_translations ct_default_visible WHERE ct_default_visible.post_id = posts.id AND ct_default_visible.locale = :ct_default_visible_locale AND ct_default_visible.status = 'published' AND TRIM(ct_default_visible.title) <> '' AND TRIM(ct_default_visible.slug) <> ''))";
+            $parts['params'][':ct_default_search_locale'] = content_default_locale();
+            $parts['params'][':ct_default_visible_locale'] = content_default_locale();
+        }
+        return $parts;
+    }
     return ct_localize_search_query($parts, $locale);
 }, 10, 3);
 
 add_filter('search_results', function ($results, $pdo) {
     $locale = ct_search_locale($pdo instanceof PDO ? $pdo : null);
-    if (!$locale || !is_array($results) || !$pdo instanceof PDO) return $results;
-    return ct_localize_search_results($results, $pdo, $locale);
+    if (!is_array($results) || !$pdo instanceof PDO) return $results;
+    if ($locale) {
+        return ct_localize_search_results(array_values(array_filter(
+            $results,
+            fn($post) => ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $locale) !== null
+        )), $pdo, $locale);
+    }
+
+    $defaultLocale = content_default_locale();
+    return array_values(array_map(
+        fn($post) => ct_post_authoring_locale($pdo, $post) === null
+            ? $post
+            : ct_overlay_published_translation($post, $pdo, $defaultLocale),
+        array_filter($results, fn($post) => ct_post_authoring_locale($pdo, $post) === null
+            || ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $defaultLocale) !== null)
+    ));
 }, 10, 2);
 
 add_filter('widget_category_url', function ($url, $category, $pdo) {
@@ -302,7 +383,7 @@ add_filter('post_content', function ($html, $post) {
         return $html;
     }
 
-    $translation = ct_get_published_translation($pdo, $postId, (string)$locale);
+    $translation = ct_get_public_post_translation($pdo, $postId, (string)$locale);
     if (!$translation || trim((string)($translation['content'] ?? '')) === '') return $html;
     if (!function_exists('render_custom_post_template')) return (string)$translation['content'];
 
@@ -332,7 +413,7 @@ add_filter('theme_mod_value', function ($value, $fieldKey, $themeFolder, $slotKe
 add_filter('collection_query_clauses', function ($clauses, $context) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     $scope = $context['scope'] ?? '';
-    if (!$locale || !in_array($scope, ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts', 'post_category_shortcode'], true)) return $clauses;
+    if (!in_array($scope, ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts', 'post_category_shortcode'], true)) return $clauses;
     $alias = in_array($context['table_alias'] ?? '', ['p', 'posts'], true) ? $context['table_alias'] : 'posts';
     $requiredFields = array_values(array_intersect(
         ['title', 'slug', 'content'],
@@ -342,8 +423,14 @@ add_filter('collection_query_clauses', function ($clauses, $context) {
     foreach ($requiredFields as $field) {
         $requiredSql .= " AND TRIM(COALESCE(ct_post_translation.{$field}, '')) <> ''";
     }
-    $clauses['where'][] = "EXISTS (SELECT 1 FROM post_translations ct_post_translation WHERE ct_post_translation.post_id = {$alias}.id AND ct_post_translation.locale = :ct_collection_locale AND ct_post_translation.status = 'published'{$requiredSql})";
-    $clauses['params'][':ct_collection_locale'] = $locale;
+    if (!$locale) {
+        $marker = "JSON_EXTRACT({$alias}.meta, '$.content_translation.authoring_locale')";
+        $clauses['where'][] = "({$marker} IS NULL OR EXISTS (SELECT 1 FROM post_translations ct_post_translation WHERE ct_post_translation.post_id = {$alias}.id AND ct_post_translation.locale = :ct_collection_locale AND ct_post_translation.status = 'published'{$requiredSql}))";
+        $clauses['params'][':ct_collection_locale'] = content_default_locale();
+    } else {
+        $clauses['where'][] = "EXISTS (SELECT 1 FROM post_translations ct_post_translation WHERE ct_post_translation.post_id = {$alias}.id AND ct_post_translation.locale = :ct_collection_locale AND ct_post_translation.status = 'published'{$requiredSql})";
+        $clauses['params'][':ct_collection_locale'] = $locale;
+    }
     return $clauses;
 }, 10, 2);
 
@@ -418,12 +505,26 @@ add_filter('sitemap_locale_rendered', function ($rendered, $locale, $type, $page
 add_filter('collection_rows', function ($rows, $context) {
     $pdo = $GLOBALS['pdo'] ?? null;
     $locale = $GLOBALS['ct_request_locale'] ?? null;
-    if (!$pdo instanceof PDO || !$locale) return $rows;
+    if (!$pdo instanceof PDO) return $rows;
     if (($context['scope'] ?? '') === 'category_index') {
+        if (!$locale) return $rows;
         return array_values(array_map(fn($category) => ct_overlay_category_translation($category, $pdo), array_filter($rows, fn($category) => ct_get_published_category_translation($pdo, (int)($category['id'] ?? 0), $locale) !== null)));
     }
     if (in_array($context['scope'] ?? '', ['article_list', 'page_list', 'author_posts', 'archive_posts', 'category_posts', 'post_category_shortcode'], true)) {
-        return array_map(fn($post) => ct_overlay_published_translation($post, $pdo, $locale), $rows);
+        if ($locale) {
+            return array_values(array_map(
+                fn($post) => ct_overlay_published_translation($post, $pdo, $locale),
+                array_filter($rows, fn($post) => ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $locale) !== null)
+            ));
+        }
+        $defaultLocale = content_default_locale();
+        return array_values(array_map(
+            fn($post) => ct_post_authoring_locale($pdo, $post) === null
+                ? $post
+                : ct_overlay_published_translation($post, $pdo, $defaultLocale),
+            array_filter($rows, fn($post) => ct_post_authoring_locale($pdo, $post) === null
+                || ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $defaultLocale) !== null)
+        ));
     }
     return $rows;
 }, 10, 2);
@@ -454,8 +555,24 @@ add_filter('collection_url', function ($url, $type, $context) {
 add_filter('content_permalink', function ($url, $post, $type) {
     $pdo = $GLOBALS['pdo'] ?? null;
     $locale = $GLOBALS['ct_request_locale'] ?? null;
-    if (!$pdo instanceof PDO || !$locale || !is_array($post)) return $url;
-    $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), $locale);
+    if (!$pdo instanceof PDO || !is_array($post)) return $url;
+    $overlayLocale = trim((string)($post['ct_locale'] ?? ''));
+    $overlaySlug = trim((string)($post['ct_translated_slug'] ?? ''));
+    if ($overlayLocale !== '' && $overlaySlug !== '' && (!$locale || $locale === $overlayLocale)) {
+        return ct_post_url($overlaySlug, $overlayLocale);
+    }
+    if (!$locale) {
+        $authoringLocale = ct_post_authoring_locale($pdo, $post);
+        if ($authoringLocale === null) return $url;
+        $defaultTranslation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), content_default_locale());
+        if ($defaultTranslation) return ct_post_url((string)$defaultTranslation['slug']);
+
+        $sourceTranslation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $authoringLocale);
+        return $sourceTranslation
+            ? ct_post_url((string)($sourceTranslation['slug'] ?? '') ?: (string)($post['slug'] ?? ''), $authoringLocale)
+            : $url;
+    }
+    $translation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $locale);
     if (!$translation) return $url;
     return ct_post_url((string)($translation['slug'] ?? '') ?: (string)($post['slug'] ?? ''), $locale);
 }, 10, 3);
@@ -507,7 +624,7 @@ add_filter('document_meta_description', function ($description, $post, $pdo) {
     if (!$pdo instanceof PDO) return $description;
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     if ($locale && is_array($post)) {
-        $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), (string)$locale);
+        $translation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), (string)$locale);
         if (trim((string)($translation['meta_description'] ?? '')) !== '') {
             return $translation['meta_description'];
         }
@@ -540,7 +657,7 @@ add_filter('canonical_url', function ($url) {
         return ct_base_url() . ct_homepage_url($locale);
     }
 
-    $translation = ct_get_published_translation($pdo, (int)($post['id'] ?? 0), $locale);
+    $translation = ct_get_public_post_translation($pdo, (int)($post['id'] ?? 0), $locale);
     if (!$translation) return $url;
 
     return ct_base_url() . ct_public_post_url($pdo, $post, (string)$locale);
@@ -592,20 +709,15 @@ add_action('jy_head', function () {
     if (!empty($GLOBALS['ct_localized_homepage'])) {
         echo '<link rel="alternate" hreflang="' . htmlspecialchars(content_default_locale(), ENT_QUOTES) . '" href="' . htmlspecialchars($base . '/', ENT_QUOTES) . '">' . "\n";
         foreach (ct_enabled_locales($pdo) as $locale) {
-            if (!ct_get_published_translation($pdo, $id, $locale)) continue;
+            if (!ct_get_public_post_translation($pdo, $id, $locale)) continue;
             echo '<link rel="alternate" hreflang="' . htmlspecialchars($locale, ENT_QUOTES) . '" href="' . htmlspecialchars($base . ct_homepage_url($locale), ENT_QUOTES) . '">' . "\n";
         }
         echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . '/', ENT_QUOTES) . '">' . "\n";
         return;
     }
     $links = [];
-    $links[] = ['hreflang' => content_default_locale(), 'href' => $base . ct_public_post_url($pdo, $post)];
-
-    $translations = array_filter(ct_translations_for_post($pdo, $id), fn(array $translation) => ($translation['status'] ?? 'published') === 'published');
-    foreach (ct_enabled_locales($pdo) as $locale) {
-        $t = $translations[$locale] ?? null;
-        if (!$t) continue;
-        if (!ct_get_published_translation($pdo, $id, $locale)) continue;
+    foreach (ct_content_locales($pdo) as $locale) {
+        if (!ct_post_locale_is_published($pdo, $post, $locale)) continue;
         $links[] = ['hreflang' => $locale, 'href' => $base . ct_public_post_url($pdo, $post, $locale)];
     }
 
@@ -614,7 +726,16 @@ add_action('jy_head', function () {
     foreach ($links as $l) {
         echo '<link rel="alternate" hreflang="' . htmlspecialchars($l['hreflang'], ENT_QUOTES) . '" href="' . htmlspecialchars($l['href'], ENT_QUOTES) . '">' . "\n";
     }
-    echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . ct_public_post_url($pdo, $post), ENT_QUOTES) . '">' . "\n";
+    $defaultLocale = content_default_locale();
+    $defaultHref = null;
+    foreach ($links as $link) {
+        if ($link['hreflang'] === $defaultLocale) {
+            $defaultHref = $link['href'];
+            break;
+        }
+    }
+    $defaultHref ??= $base . ct_public_post_url($pdo, $post, ct_post_source_locale($pdo, $post));
+    echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($defaultHref, ENT_QUOTES) . '">' . "\n";
 });
 
 // ─── Language switcher — shared renderer ───
@@ -693,7 +814,7 @@ if (!function_exists('ct_switcher_html')) {
     if (!empty($GLOBALS['ct_localized_homepage'])) {
         $items = [['locale' => content_default_locale(), 'url' => '/', 'active' => $currentLocale === content_default_locale()]];
         foreach ($locales as $locale) {
-            if (!ct_get_published_translation($pdo, (int)$current['id'], $locale)) continue;
+            if (!ct_get_public_post_translation($pdo, (int)$current['id'], $locale)) continue;
             $items[] = ['locale' => $locale, 'url' => ct_homepage_url($locale), 'active' => $currentLocale === $locale];
         }
         return ct_render_switcher_items($items, $title, $style);
@@ -703,20 +824,8 @@ if (!function_exists('ct_switcher_html')) {
         if ($slug === '') return '';
 
         $items = [];
-        $items[] = [
-            'locale' => content_default_locale(),
-            'url'    => ct_public_post_url($pdo, $current),
-            'active' => $currentLocale === content_default_locale(),
-        ];
-
-        $translations = array_filter(
-            ct_translations_for_post($pdo, (int)$current['id']),
-            fn(array $translation) => ($translation['status'] ?? 'published') === 'published'
-        );
-        foreach ($locales as $locale) {
-            $t = $translations[$locale] ?? null;
-            if (!$t) continue;
-            if (!ct_get_published_translation($pdo, (int)$current['id'], $locale)) continue;
+        foreach (ct_content_locales($pdo) as $locale) {
+            if (!ct_post_locale_is_published($pdo, $current, $locale)) continue;
             $items[] = [
                 'locale' => $locale,
                 'url'    => ct_public_post_url($pdo, $current, $locale),
