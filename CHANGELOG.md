@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.13.0 - 2026-09-02
+
+- Add reviewed Theme Zone text translations with explicit widget schemas, source fingerprints, and optimistic editor state.
+- Add bounded physical PHP discovery and reviewed translations for theme-owned UI strings.
+- Integrate locale-safe Theme Builder return navigation and generic Core URL contracts.
+- Export and uninstall both new plugin-owned resource types.
+- Add per-author writing-language defaults to Translation Settings.
+- Keep the default locale canonical in `posts`, store alternate-language authoring as a translation, and track source publication independently.
+- Offer the site default and other enabled languages as translation targets while excluding the authored source language.
+- Route alternate-locale authored posts to their locale URL until a reviewed default-language translation is published.
+- Use a published default-language translation for unprefixed URLs, collections, search, hreflang links, and language switching.
+- Reject translated slug conflicts, quarantine failed source synchronization as draft, and block unsafe locale or plugin removal while alternate-language sources remain.
+- Display published post titles, links, and editor actions in each dashboard user's configured writing locale.
+
 ## 1.12.2 - 2026-08-20
 
 - Honor host-provided locales for search forms, translated-field matching, result overlays, pagination, and canonical URLs.

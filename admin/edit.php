@@ -14,6 +14,9 @@ ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $overviewUrl = $base . '/?page=admin/tools/content-translation';
+$returnUrl = function_exists('adiwira_safe_return_to')
+    ? adiwira_safe_return_to($_GET['return_to'] ?? null, $overviewUrl)
+    : $overviewUrl;
 $saveUrl = $base . '/?page=admin/tools/content-translation/api/save&action=api';
 $deleteUrl = $base . '/?page=admin/tools/content-translation/api/delete&action=api';
 
@@ -25,13 +28,7 @@ if ($postId <= 0 || $locale === '') {
     return;
 }
 
-$locales = ct_enabled_locales($pdo);
-if (!in_array($locale, $locales, true)) {
-    echo '<p>' . __('Locale not enabled.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
-    return;
-}
-
-$stmt = $pdo->prepare("SELECT id, type, title, slug, content, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) {
@@ -39,8 +36,14 @@ if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) {
     return;
 }
 
+$locales = ct_post_translation_locales($pdo, $post);
+if (!in_array($locale, $locales, true)) {
+    echo '<p>' . __('Locale not available for this source post.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
+    return;
+}
+
 if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$post['content']) !== null) {
-    $packageEditor = $base . '/?page=admin/tools/content-translation/theme-section-edit&post_id=' . $postId . '&locale=' . urlencode($locale);
+    $packageEditor = $base . '/?page=admin/tools/content-translation/theme-section-edit&post_id=' . $postId . '&locale=' . urlencode($locale) . '&return_to=' . rawurlencode($returnUrl);
     if (!headers_sent()) {
         header('Location: ' . $packageEditor, true, 302);
         exit;
@@ -52,7 +55,7 @@ if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$pos
 
 $translationRow = ct_get_translation($pdo, $postId, $locale);
 $translation = $translationRow ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published'];
-$defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
+$sourceLocale = ct_post_source_locale($pdo, $post);
 $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$post['content'])
     || ct_content_requires_codemirror((string)$translation['content']);
@@ -71,7 +74,11 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
       </p>
     </div>
     <div class="ct-header-actions">
-      <a class="btn" href="<?= h($overviewUrl) ?>"><?= __('Back') ?></a>
+      <?php foreach ($locales as $targetLocale): ?>
+        <?php if ($targetLocale === $locale) continue; ?>
+        <a class="btn" href="<?= h($base . '/?page=admin/tools/content-translation/edit&post_id=' . $postId . '&locale=' . urlencode($targetLocale) . '&return_to=' . rawurlencode($returnUrl)) ?>"><?= h(strtoupper($targetLocale)) ?></a>
+      <?php endforeach; ?>
+      <a class="btn" href="<?= h($returnUrl) ?>"><?= __('Back') ?></a>
       <?php if ($publishedTranslation): ?>
         <a class="btn" href="<?= h($previewUrl) ?>" target="_blank" rel="noopener"><?= __('Preview') ?></a>
       <?php endif; ?>
@@ -124,7 +131,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
     </section>
 
     <details class="ct-panel ct-source-panel">
-      <summary><?= __('Original') ?> (<?= h(strtoupper($defaultLocale)) ?>)</summary>
+      <summary><?= __('Original') ?> (<?= h(strtoupper($sourceLocale)) ?>)</summary>
       <div class="ct-source-panel__body">
         <div class="ct-field">
           <label><?= __('Title') ?></label>
@@ -243,7 +250,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
       const res = await fetch('<?= $deleteUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
       const data = await res.json();
       if (data.success) {
-        window.location.href = '<?= $overviewUrl ?>';
+        window.location.href = <?= json_encode($returnUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
       } else {
         closeModal();
         notify('error', data.error || '<?= __('Delete failed.') ?>');

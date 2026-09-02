@@ -21,6 +21,17 @@ $defaultLocale = function_exists('content_default_locale') ? content_default_loc
 $enabled = ct_enabled_locales($pdo);
 $directions = ct_locale_directions($pdo);
 $sitemapLocales = ct_sitemap_locales($pdo);
+$authorPreferences = ct_author_locale_preferences($pdo);
+$authorRows = $pdo->query("SELECT u.id, u.name, u.username, u.email,
+        (SELECT GROUP_CONCAT(r.name ORDER BY r.authority_rank DESC, r.name ASC SEPARATOR ', ')
+         FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = u.id AND (ur.expires_at IS NULL OR ur.expires_at > NOW())) AS role_names
+    FROM users u
+    WHERE u.is_deleted = 0 AND u.is_locked = 0
+    ORDER BY COALESCE(NULLIF(u.name, ''), NULLIF(u.username, ''), u.email) ASC")->fetchAll(PDO::FETCH_ASSOC);
+$authors = array_values(array_filter($authorRows, static fn(array $user): bool =>
+    user_can($pdo, (int)$user['id'], 'core.posts.create')
+));
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_settings'])) {
     if (!function_exists('csrf_check') || !csrf_check((string)($_POST['csrf_token'] ?? ''))) {
@@ -31,14 +42,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_sett
     }
     $newLocale = trim((string)($_POST['custom_locale'] ?? '')) ?: trim((string)($_POST['preset_locale'] ?? ''));
     if ($newLocale !== '' && function_exists('register_content_locale')) register_content_locale($pdo, $newLocale);
-    $selected = $_POST['locales'] ?? [];
+    $selected = is_array($_POST['locales'] ?? null) ? $_POST['locales'] : [];
     if ($newLocale !== '') $selected[] = $newLocale;
-    ct_set_enabled_locales($pdo, is_array($selected) ? $selected : []);
+    $selected = array_values(array_unique(array_map('strval', $selected)));
+    $requiredSourceLocales = array_values(array_diff(ct_post_authoring_locales_in_use($pdo), $selected));
+    if ($requiredSourceLocales !== []) {
+        if (function_exists('adiwira_redirect_with_flash')) {
+            adiwira_redirect_with_flash(
+                $selfUrl,
+                'error',
+                sprintf(__('Cannot disable authored source locales: %s.'), strtoupper(implode(', ', $requiredSourceLocales)))
+            );
+        }
+        return;
+    }
+    ct_set_enabled_locales($pdo, $selected);
     $newDirection = ($_POST['new_locale_direction'] ?? '') === 'rtl' ? 'rtl' : 'ltr';
     $submittedDirections = is_array($_POST['locale_directions'] ?? null) ? $_POST['locale_directions'] : [];
     if ($newLocale !== '') $submittedDirections[$newLocale] = $newDirection;
     ct_set_locale_directions($pdo, $submittedDirections);
     ct_set_sitemap_locales($pdo, is_array($_POST['sitemap_locales'] ?? null) ? $_POST['sitemap_locales'] : []);
+    ct_set_author_locale_preferences($pdo, is_array($_POST['author_locales'] ?? null) ? $_POST['author_locales'] : []);
     if (function_exists('adiwira_redirect_with_flash')) {
         adiwira_redirect_with_flash($selfUrl, 'success', __('Settings saved.'));
     }
@@ -138,6 +162,38 @@ $flashType = $_GET['flash_type'] ?? 'success';
           </label>
         <?php endforeach; ?>
       </div>
+    </section>
+
+    <section class="ct-settings-card ct-settings-card--authors">
+      <div class="ct-settings-card__heading">
+        <label><?= __('Default writing language by author') ?></label>
+        <span class="muted"><?= __('Authors assigned to a translation language can use the standard Add Post screen. Their article is automatically stored for that locale while the site default language stays unchanged.') ?></span>
+      </div>
+      <?php if ($authors === []): ?>
+        <p class="muted"><?= __('No active users can create posts.') ?></p>
+      <?php else: ?>
+        <div class="ct-author-language-list">
+          <?php foreach ($authors as $author): ?>
+            <?php
+              $authorId = (int)$author['id'];
+              $authorLabel = trim((string)($author['name'] ?? '')) ?: (trim((string)($author['username'] ?? '')) ?: (string)$author['email']);
+              $selectedLocale = $authorPreferences[$authorId] ?? '';
+            ?>
+            <label class="ct-author-language-row">
+              <span class="ct-author-language-identity">
+                <strong><?= h($authorLabel) ?></strong>
+                <small><?= h((string)($author['role_names'] ?? '')) ?></small>
+              </span>
+              <select name="author_locales[<?= $authorId ?>]">
+                <option value=""><?= h(__('Site default') . ' (' . strtoupper($defaultLocale) . ')') ?></option>
+                <?php foreach ($enabled as $locale): ?>
+                  <option value="<?= h($locale) ?>" <?= $selectedLocale === $locale ? 'selected' : '' ?>><?= h(strtoupper($locale)) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     </section>
 
     <div class="ct-settings-actions">

@@ -1,17 +1,21 @@
 # Theme Translation
 
-Content Translation supports three separate theme workflows:
+Content Translation supports five separate theme workflows:
 
 - **Theme Partials** translate database-backed posts whose `type` is `theme`.
 - **Theme Section Packages** adapt reviewed translations of Theme Templates
   composed from Core Theme Sections.
 - **Theme Files** translate selected Theme Customizer values consumed by PHP theme
   files through Core's `theme_mod()` helper.
+- **Theme Zones** translate only widget config keys explicitly declared as human
+  text by Core or the widget provider.
+- **Theme UI Strings** translate literal `__()` / `_e()` calls discovered from a
+  validated physical theme tree.
 
 All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-Content Translation `1.12.2` requires Jyavani Core `2.3.81` or newer. Core
+Content Translation `1.13.0` requires Jyavani Core `2.3.95` or newer. Core
 `2.3.54` introduced the generic Theme Section renderer and hooks required by the
 `ct-theme-sections-v1` adapter; Core `2.3.55` added the canonical content routes
 used by localized Theme Templates and their sitemaps. Core `2.3.57` supplies the
@@ -137,7 +141,8 @@ successful package save. Existing translations without a metadata row show
 **Unverified source**, matching fingerprints show **Current**, and changed Core
 section definitions/renderers/composition show **Stale source**. There is no
 destructive migration. Export format version 3 adds
-`theme_section_translation_metadata`; all prior translation arrays retain their
+`theme_section_translation_metadata`; export format version 5 additionally
+includes Theme Zone and Theme UI String rows, while prior arrays retain their
 existing shape.
 
 The editor carries the source fingerprint and a hash of the complete
@@ -283,6 +288,43 @@ search behavior and do not require a file-backed homepage translation.
 Changing a theme declaration is enforced immediately. If a new translatable
 field is added to a resource, an older published row is no longer considered
 complete until the new field is translated and saved.
+
+## Theme Zone contract
+
+Core widget definitions may declare `translatable_config` metadata for
+human-readable config keys. Content Translation never translates arbitrary
+config objects: URLs, media sources, menu/sidebar identities, CSS classes,
+ordering, booleans, and layout keys remain shared. Core passes complete rows to
+the generic bulk `theme_zone_items` filter so the plugin retains the stable item
+ID and performs one bounded lookup per rendered position.
+
+Open **Themes / Customize**, expand a gadget, and choose a locale from its
+translation controls. Drafts may be incomplete. Publishing requires every
+nonempty declared source text to have a translated value. The editor carries a
+fingerprint of widget type, schema, and source values plus the complete loaded
+translation state. Runtime uses only complete, current, published rows.
+
+HTML-bearing gadgets are restricted to the Site Owner and `core.themes.manage`.
+Only declared keys are overlaid; all other live config bytes remain unchanged.
+Exact root links and form actions are localized by Core as shared URL behavior,
+not stored as translated text.
+
+## Theme UI String contract
+
+Open **Tools / Content Translation / Theme UI Strings** and select a registered
+physical theme. Discovery walks regular PHP files below that exact theme root,
+rejects symlinks and escapes, and enforces file-size, file-count, and aggregate
+limits. `token_get_all()` accepts only complete calls whose source and optional
+scope are string literals. Dynamic expressions and external JavaScript are not
+translation resources.
+
+Core's generic `localized_string` filter supplies the source, scope, locale,
+slot, requested theme, and physical source owner. This distinguishes a file
+inherited from the Default theme from one physically owned by the requested
+theme. The plugin overlays only an exact published row for that physical owner.
+Format placeholders such as `%s` and `%d` must be preserved. Themes must emit
+external JavaScript labels from translated PHP data rather than embedding a
+second English catalog.
 
 Version 1.7 also requires nonempty translated fields when Core explicitly marks
 them as required for a collection. Existing published Page List translations

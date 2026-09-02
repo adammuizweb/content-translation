@@ -10,9 +10,9 @@ $check = static function (bool $ok, string $message) use (&$failures): void {
 
 $manifest = json_decode((string)file_get_contents($root . '/plugin.json'), true, 32, JSON_THROW_ON_ERROR);
 $pages = $manifest['admin']['pages'] ?? [];
-$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.81', 'manifest requires Core 2.3.81');
+$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.95', 'manifest requires transaction-scoped workflow Core 2.3.95');
 $check(($manifest['permissions'][0]['key'] ?? '') === 'plugin.content-translation.workspace.access', 'manifest owns one workspace permission');
-$check(count($pages) === 18, 'manifest retains all eighteen admin routes');
+$check(count($pages) === 21, 'manifest declares all twenty-one admin routes');
 $check(array_filter($pages, static fn(array $page): bool => ($page['permission'] ?? '') !== 'plugin.content-translation.workspace.access') === [], 'every admin route uses workspace permission');
 
 $helpers = (string)file_get_contents($root . '/includes/helpers.php');

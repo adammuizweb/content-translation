@@ -22,6 +22,8 @@ $section = substr($route, strrpos($route, '/') + 1);
 
 $locales = ct_enabled_locales($pdo);
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
+$canManageThemeTranslations = ct_user_is_site_owner($pdo)
+    && user_can($pdo, ct_current_user_id(), 'core.themes.manage');
 
 if ($section === 'content-translation'):
 ?>
@@ -34,23 +36,27 @@ if ($section === 'content-translation'):
   <section class="ct-hub-grid">
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/posts') ?>"><i>01</i><strong><?= __('Posts') ?></strong><span><?= __('Translate article title, slug, content, and SEO description.') ?></span><b><?= __('Manage posts') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/pages') ?>"><i>02</i><strong><?= __('Pages') ?></strong><span><?= __('Translate standalone pages with the same reviewed workflow.') ?></span><b><?= __('Manage pages') ?> →</b></a>
+    <?php if ($canManageThemeTranslations): ?>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/themes') ?>"><i>03</i><strong><?= __('Theme Partials') ?></strong><span><?= __('Translate database-backed theme content and its metadata.') ?></span><b><?= __('Manage theme partials') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-sections') ?>"><i>04</i><strong><?= __('Theme Sections') ?></strong><span><?= __('Translate locked Theme Template compositions section by section.') ?></span><b><?= __('Manage theme sections') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-files') ?>"><i>05</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/shortcodes/index&tab=presets') ?>"><i>06</i><strong><?= __('Shortcode Presets') ?></strong><span><?= __('Open a source preset, then choose a language beside its heading settings. Query and layout configuration stay shared.') ?></span><b><?= __('Open Shortcode Presets') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>07</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/menus/index') ?>"><i>08</i><strong><?= __('Menus') ?></strong><span><?= __('Translate navigation labels and manual URLs from the menu editor.') ?></span><b><?= __('Open menus') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/sidebar/index') ?>"><i>09</i><strong><?= __('Sidebar') ?></strong><span><?= __('Translate widget titles and supported widget text in each sidebar zone.') ?></span><b><?= __('Open sidebar') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/settings/site') ?>"><i>10</i><strong><?= __('Site Identity') ?></strong><span><?= __('Set localized site title and description for homepage and metadata.') ?></span><b><?= __('Open site settings') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/profile/index') ?>"><i>11</i><strong><?= __('Author Profiles') ?></strong><span><?= __('Translate the author bio from each user profile.') ?></span><b><?= __('Open profiles') ?> →</b></a>
-    <a class="ct-hub-card" href="<?= h($settingsUrl) ?>"><i>12</i><strong><?= __('Languages & Sitemap') ?></strong><span><?= __('Enable locales, choose sitemap languages, and download a backup.') ?></span><b><?= __('Open settings') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/themes/customize') ?>"><i>06</i><strong><?= __('Theme Zones') ?></strong><span><?= __('Open Customize to translate declared gadget text while layout and behavior stay shared.') ?></span><b><?= __('Open Customize') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-strings') ?>"><i>07</i><strong><?= __('Theme UI Strings') ?></strong><span><?= __('Translate literal interface strings discovered from physical theme PHP source.') ?></span><b><?= __('Manage theme strings') ?> →</b></a>
+    <?php endif; ?>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/shortcodes/index&tab=presets') ?>"><i>08</i><strong><?= __('Shortcode Presets') ?></strong><span><?= __('Open a source preset, then choose a language beside its heading settings. Query and layout configuration stay shared.') ?></span><b><?= __('Open Shortcode Presets') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>09</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/menus/index') ?>"><i>10</i><strong><?= __('Menus') ?></strong><span><?= __('Translate navigation labels and manual URLs from the menu editor.') ?></span><b><?= __('Open menus') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/sidebar/index') ?>"><i>11</i><strong><?= __('Sidebar') ?></strong><span><?= __('Translate widget titles and supported widget text in each sidebar zone.') ?></span><b><?= __('Open sidebar') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/settings/site') ?>"><i>12</i><strong><?= __('Site Identity') ?></strong><span><?= __('Set localized site title and description for homepage and metadata.') ?></span><b><?= __('Open site settings') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($base . '/?page=admin/profile/index') ?>"><i>13</i><strong><?= __('Author Profiles') ?></strong><span><?= __('Translate the author bio from each user profile.') ?></span><b><?= __('Open profiles') ?> →</b></a>
+    <a class="ct-hub-card" href="<?= h($settingsUrl) ?>"><i>14</i><strong><?= __('Languages & Sitemap') ?></strong><span><?= __('Enable locales, choose sitemap languages, and download a backup.') ?></span><b><?= __('Open settings') ?> →</b></a>
   </section>
   <aside class="ct-hub-tip"><strong><?= __('How it works') ?></strong><span><?= __('Default-language content stays unchanged. A locale URL and sitemap entry appear only after a reviewed translation is published.') ?></span></aside>
 </div>
 <?php return; endif;
 
 if ($section === 'theme-files'):
-    if (!user_can($pdo, ct_current_user_id(), 'core.themes.manage')) { http_response_code(404); return; }
+    if (!$canManageThemeTranslations) { http_response_code(404); return; }
     $resources = ct_theme_file_resources($pdo);
     $homepageResource = ct_homepage_theme_file_resource($pdo);
     if ($homepageResource && !isset($resources[$homepageResource['id']])) {
@@ -134,7 +140,7 @@ if ($typeFilter === 'theme') {
     $lastMatches = [];
     $contentStmt = $pdo->prepare('SELECT content FROM posts WHERE id = ? LIMIT 1');
     do {
-        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.status, p.updated_at,
+        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status, p.updated_at,
                 CASE WHEN LOCATE('widget:theme_section', p.content) > 0 THEN 1 ELSE 0 END AS package_candidate
             FROM posts p WHERE $where AND (p.updated_at < :ct_cursor_before OR (p.updated_at = :ct_cursor_equal AND p.id < :ct_cursor_id))
             ORDER BY p.updated_at DESC, p.id DESC LIMIT $batchSize");
@@ -171,7 +177,7 @@ if ($typeFilter === 'theme') {
     $countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts p WHERE $where");
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
-    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.status FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
+    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
     $listStmt->execute($params);
     $posts = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     $totalPages = max(1, (int)ceil($total / $perPage));
@@ -241,7 +247,7 @@ $flashType = $_GET['flash_type'] ?? 'success';
           <td class="ct-translations-col">
             <select class="ct-translation-select" aria-label="<?= h(__('Translations')) ?>" onchange="if(this.value) window.location.href=this.value">
               <option value=""><?= __('Choose language…') ?></option>
-              <?php foreach ($locales as $locale): ?>
+              <?php foreach (ct_post_translation_locales($pdo, $post) as $locale): ?>
                 <?php $status = $statuses[(int)$post['id']][$locale] ?? null; ?>
                 <?php $label = strtoupper($locale) . ' — ' . ($status === 'draft' ? __('Draft') : ($status !== null ? __('Edit') : __('Add'))); ?>
                 <option value="<?= h($editUrl . '&post_id=' . (int)$post['id'] . '&locale=' . urlencode($locale)) ?>"><?= h($label) ?></option>

@@ -1,8 +1,8 @@
 {
   "name": "content-translation",
-  "version": "1.12.2",
+  "version": "1.13.0",
   "title": "Content Translation",
-  "description": "Reviewed translations for posts, pages, Shortcode Presets, Theme Section packages, file-backed theme fields, categories, locale-prefixed URLs, and hreflang metadata.",
+  "description": "Reviewed translations for content, Theme Sections, Theme Files, Theme Zones, physical theme strings, locale-prefixed URLs, and hreflang metadata.",
   "author": "Adam Muiz",
   "author_uri": "https://jyavani.com/member/adammuiz/",
   "plugin_uri": "https://jyavani.com/plugin/content-translation/",
@@ -14,7 +14,7 @@
   },
   "icon": "icon.png",
   "requires": {
-    "jyavani": ">=2.3.81",
+    "jyavani": ">=2.3.95",
     "php": ">=8.1",
     "extensions": [
       "pdo",
@@ -106,6 +106,36 @@
         "route": "admin/tools/content-translation/theme-file-edit",
         "file": "admin/theme-file-edit.php",
         "title": "Edit Theme File Translation",
+        "hidden": true,
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
+      },
+      {
+        "route": "admin/tools/content-translation/theme-zone-edit",
+        "file": "admin/theme-zone-edit.php",
+        "title": "Edit Theme Zone Translation",
+        "hidden": true,
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
+      },
+      {
+        "route": "admin/tools/content-translation/theme-strings",
+        "file": "admin/theme-strings.php",
+        "title": "Translate Theme UI Strings",
+        "hidden": true,
+        "roles": [
+          "admin"
+        ],
+        "permission": "plugin.content-translation.workspace.access"
+      },
+      {
+        "route": "admin/tools/content-translation/theme-string-edit",
+        "file": "admin/theme-string-edit.php",
+        "title": "Edit Theme UI String Translation",
         "hidden": true,
         "roles": [
           "admin"
@@ -221,7 +251,7 @@
   },
   "assets": {
     "css": [
-      "/static/plugins/content-translation/content-translation.css?v=1.12.2"
+      "/static/plugins/content-translation/content-translation.css?v=1.13.0"
     ],
     "js": []
   },

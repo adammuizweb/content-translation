@@ -35,6 +35,11 @@ function ct_overlay_published_translation(array $post, PDO $pdo, ?string $locale
     return $post;
 }
 
+function ct_get_public_post_translation(PDO $pdo, int $postId, string $locale): ?array
+{
+    return ['post_id' => $postId, 'locale' => $locale, 'status' => 'published'];
+}
+
 function ct_post_url(string $slug, ?string $locale = null): string
 {
     return '/' . ($locale ? $locale . '/' : '') . trim($slug, '/') . '/';

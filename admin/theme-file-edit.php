@@ -9,20 +9,29 @@ if (!function_exists('h')) {
 
 $pdo = $GLOBALS['pdo'] ?? null;
 if (!$pdo instanceof PDO) { echo '<p>' . __('Database not available.') . '</p>'; return; }
-if (!ct_user_can_workspace($pdo) || !user_can($pdo, ct_current_user_id(), 'core.themes.manage')) { http_response_code(404); return; }
+if (!ct_user_can_workspace($pdo) || !ct_user_is_site_owner($pdo)
+    || !user_can($pdo, ct_current_user_id(), 'core.themes.manage')) { http_response_code(404); return; }
 
 ct_ensure_schema($pdo);
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
-$listUrl = $base . '/?page=admin/tools/content-translation/theme-files';
-$editorBaseUrl = $base . '/?page=admin/tools/content-translation/theme-file-edit';
-$themeFolder = trim((string)($_GET['theme_folder'] ?? $_POST['theme_folder'] ?? ''));
-$slotKey = trim((string)($_GET['slot_key'] ?? $_POST['slot_key'] ?? ''));
-$locale = trim((string)($_GET['locale'] ?? $_POST['locale'] ?? ''));
+$overviewUrl = $base . '/?page=admin/tools/content-translation/theme-files';
+$returnToInput = $_POST['return_to'] ?? $_GET['return_to'] ?? null;
+$listUrl = function_exists('adiwira_safe_return_to')
+    ? adiwira_safe_return_to($returnToInput, $overviewUrl)
+    : $overviewUrl;
+$deleteReturnUrl = $listUrl === $overviewUrl ? $overviewUrl . '&flash=' . rawurlencode(__('Translation deleted.')) : $listUrl;
+$scalar = static fn(mixed $value): string => is_scalar($value) ? trim((string)$value) : '';
+$themeFolder = $scalar($_POST['theme_folder'] ?? $_GET['theme_folder'] ?? '');
+$slotKey = $scalar($_POST['slot_key'] ?? $_GET['slot_key'] ?? '');
+$locale = $scalar($_POST['locale'] ?? $_GET['locale'] ?? '');
 $resource = ct_theme_file_resource($pdo, $themeFolder, $slotKey);
-$editorUrl = $editorBaseUrl
-    . '&theme_folder=' . urlencode($themeFolder)
-    . '&slot_key=' . urlencode($slotKey)
-    . '&locale=' . urlencode($locale);
+$editorUrl = $base . '/?' . http_build_query([
+    'page' => 'admin/tools/content-translation/theme-file-edit',
+    'theme_folder' => $themeFolder,
+    'slot_key' => $slotKey,
+    'locale' => $locale,
+    'return_to' => $listUrl,
+]);
 
 if (!$resource || !in_array($locale, ct_enabled_locales($pdo), true)) {
     echo '<div class="ct-admin"><div class="ct-flash ct-flash-error">' . h(__('Theme file resource or locale is not available.')) . '</div><a class="btn" href="' . h($listUrl) . '">' . h(__('Back')) . '</a></div>';
@@ -43,7 +52,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             if (!ct_delete_theme_file_translation($pdo, $themeFolder, $slotKey, $locale)) {
                 throw new RuntimeException(__('Delete failed.'));
             }
-            $redirect($listUrl . '&flash=' . urlencode(__('Translation deleted.')));
+            $redirect($deleteReturnUrl);
         }
         if (($_POST['intent'] ?? '') !== 'save') throw new InvalidArgumentException(__('Invalid action.'));
         if (!ct_save_theme_file_translation($pdo, $themeFolder, $slotKey, $locale, [
@@ -102,6 +111,7 @@ $displaySource = static function (mixed $value): string {
     <input type="hidden" name="theme_folder" value="<?= h($themeFolder) ?>">
     <input type="hidden" name="slot_key" value="<?= h($slotKey) ?>">
     <input type="hidden" name="locale" value="<?= h($locale) ?>">
+    <input type="hidden" name="return_to" value="<?= h($listUrl) ?>">
     <input type="hidden" name="intent" value="save">
 
     <p class="muted"><?= __('All fields below are required before this resource can be published, preventing source-language text from leaking into a localized page.') ?></p>
@@ -144,6 +154,7 @@ $displaySource = static function (mixed $value): string {
       <input type="hidden" name="theme_folder" value="<?= h($themeFolder) ?>">
       <input type="hidden" name="slot_key" value="<?= h($slotKey) ?>">
       <input type="hidden" name="locale" value="<?= h($locale) ?>">
+      <input type="hidden" name="return_to" value="<?= h($listUrl) ?>">
       <input type="hidden" name="intent" value="delete">
       <button type="submit" class="btn btn-danger"><?= __('Delete Translation') ?></button>
     </form>
