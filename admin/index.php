@@ -14,6 +14,9 @@ ct_ensure_schema($pdo);
 
 $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
 $selfUrl = $base . '/?page=admin/tools/content-translation';
+$postsUrl = $base . '/?page=admin/tools/content-translation/posts';
+$pagesUrl = $base . '/?page=admin/tools/content-translation/pages';
+$themesUrl = $base . '/?page=admin/tools/content-translation/themes';
 $editUrl = $base . '/?page=admin/tools/content-translation/edit';
 $themeFileEditUrl = $base . '/?page=admin/tools/content-translation/theme-file-edit';
 $settingsUrl = $base . '/?page=admin/tools/content-translation/settings';
@@ -34,12 +37,12 @@ if ($section === 'content-translation'):
   </div>
   <?php if (empty($locales)): ?><div class="ct-flash ct-flash-warning"><?= __('No translation locales enabled.') ?> <a href="<?= h($settingsUrl) ?>"><?= __('Configure locales') ?></a></div><?php endif; ?>
   <section class="ct-hub-grid">
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/posts') ?>"><i>01</i><strong><?= __('Posts') ?></strong><span><?= __('Translate article title, slug, content, and SEO description.') ?></span><b><?= __('Manage posts') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/pages') ?>"><i>02</i><strong><?= __('Pages') ?></strong><span><?= __('Translate standalone pages with the same reviewed workflow.') ?></span><b><?= __('Manage pages') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($postsUrl) ?>"><i>01</i><strong><?= __('Posts') ?></strong><span><?= __('Translate article title, slug, content, and SEO description.') ?></span><b><?= __('Manage posts') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($pagesUrl) ?>"><i>02</i><strong><?= __('Pages') ?></strong><span><?= __('Translate standalone pages with the same reviewed workflow.') ?></span><b><?= __('Manage pages') ?> →</b></a>
     <?php if ($canManageThemeTranslations): ?>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/themes') ?>"><i>03</i><strong><?= __('Theme Partials') ?></strong><span><?= __('Translate database-backed theme content and its metadata.') ?></span><b><?= __('Manage theme partials') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-sections') ?>"><i>04</i><strong><?= __('Theme Sections') ?></strong><span><?= __('Translate locked Theme Template compositions section by section.') ?></span><b><?= __('Manage theme sections') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($selfUrl . '/theme-files') ?>"><i>05</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($themesUrl) ?>"><i>03</i><strong><?= __('Theme Partials') ?></strong><span><?= __('Translate database-backed theme content and its metadata.') ?></span><b><?= __('Manage theme partials') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-sections') ?>"><i>04</i><strong><?= __('Theme Sections') ?></strong><span><?= __('Translate locked Theme Template compositions section by section.') ?></span><b><?= __('Manage theme sections') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-files') ?>"><i>05</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/themes/customize') ?>"><i>06</i><strong><?= __('Theme Zones') ?></strong><span><?= __('Open Customize to translate declared gadget text while layout and behavior stay shared.') ?></span><b><?= __('Open Customize') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-strings') ?>"><i>07</i><strong><?= __('Theme UI Strings') ?></strong><span><?= __('Translate literal interface strings discovered from physical theme PHP source.') ?></span><b><?= __('Manage theme strings') ?> →</b></a>
     <?php endif; ?>
@@ -140,7 +143,7 @@ if ($typeFilter === 'theme') {
     $lastMatches = [];
     $contentStmt = $pdo->prepare('SELECT content FROM posts WHERE id = ? LIMIT 1');
     do {
-        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status, p.updated_at,
+        $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status, p.created_by, p.updated_at,
                 CASE WHEN LOCATE('widget:theme_section', p.content) > 0 THEN 1 ELSE 0 END AS package_candidate
             FROM posts p WHERE $where AND (p.updated_at < :ct_cursor_before OR (p.updated_at = :ct_cursor_equal AND p.id < :ct_cursor_id))
             ORDER BY p.updated_at DESC, p.id DESC LIMIT $batchSize");
@@ -177,7 +180,7 @@ if ($typeFilter === 'theme') {
     $countStmt = $pdo->prepare("SELECT COUNT(*) FROM posts p WHERE $where");
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
-    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
+    $listStmt = $pdo->prepare("SELECT p.id, p.type, p.title, p.slug, p.meta, p.status, p.created_by FROM posts p WHERE $where ORDER BY p.updated_at DESC LIMIT $perPage OFFSET $offset");
     $listStmt->execute($params);
     $posts = $listStmt->fetchAll(PDO::FETCH_ASSOC);
     $totalPages = max(1, (int)ceil($total / $perPage));
@@ -247,9 +250,11 @@ $flashType = $_GET['flash_type'] ?? 'success';
           <td class="ct-translations-col">
             <select class="ct-translation-select" aria-label="<?= h(__('Translations')) ?>" onchange="if(this.value) window.location.href=this.value">
               <option value=""><?= __('Choose language…') ?></option>
-              <?php foreach (ct_post_translation_locales($pdo, $post) as $locale): ?>
-                <?php $status = $statuses[(int)$post['id']][$locale] ?? null; ?>
-                <?php $label = strtoupper($locale) . ' — ' . ($status === 'draft' ? __('Draft') : ($status !== null ? __('Edit') : __('Add'))); ?>
+              <?php foreach (ct_content_locales($pdo) as $locale): ?>
+                <?php $isSource = $locale === ct_post_source_locale($pdo, $post); ?>
+                <?php $status = $isSource ? ct_post_source_status($pdo, $post) : ($statuses[(int)$post['id']][$locale] ?? null); ?>
+                <?php $canEditLocale = ct_user_can_edit_post_locale($pdo, $post, $locale); ?>
+                <?php $label = strtoupper($locale) . ' — ' . ($canEditLocale ? ($status === 'draft' ? __('Draft') : (($isSource || $status !== null) ? __('Edit') : __('Add'))) : __('View')); ?>
                 <option value="<?= h($editUrl . '&post_id=' . (int)$post['id'] . '&locale=' . urlencode($locale)) ?>"><?= h($label) ?></option>
               <?php endforeach; ?>
             </select>

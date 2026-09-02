@@ -35,7 +35,7 @@ $check(str_contains($sources['helpers'], 'CREATE TABLE IF NOT EXISTS ct_theme_zo
 $check(str_contains($sources['bootstrap'], "add_action('theme_zone_item_before_delete'")
     && str_contains($sources['bootstrap'], 'DELETE FROM ct_theme_zone_item_translations WHERE theme_zone_item_id = ?'),
     'Core source deletion atomically cleans plugin-owned Theme Zone translations');
-$check(str_contains($sources['helpers'], "'version' => 5")
+$check(str_contains($sources['helpers'], "'version' => 6")
     && str_contains($sources['helpers'], "'theme_zone_item_translations'")
     && str_contains($sources['helpers'], "'theme_string_translations'"),
     'versioned export includes Theme Zone and static theme strings');

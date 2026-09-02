@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.13.2 - 2026-09-02
+
+- Separate default writing-language preferences from explicit user and role locale edit grants.
+- Keep every Core-readable language representation visible while rendering unassigned locales read-only.
+- Record the last translation actor in `post_translations.updated_by` without changing Core ownership.
+- Require locale grants for canonical source mutations and block inconsistent ownership changes in active multilingual workflows.
+
 ## 1.13.1 - 2026-09-02
 
 - Extend assigned-language author workflows to Pages and localized Theme Template dashboard representation.

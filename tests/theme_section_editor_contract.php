@@ -36,7 +36,7 @@ $check(str_contains($sources['delete'], 'translation_state') && str_contains($so
 $check(str_contains($sources['generic_save'], 'ct_save_translation_locked') && str_contains($sources['helpers'], 'ct_translation_row_state_token($current)') && str_contains($sources['helpers'], 'FOR UPDATE'), 'generic save validates the loaded optimistic state under row locks');
 $check(str_contains($sources['generic_save'], 'Use the Theme Section editor'), 'generic save rejects package-composed source templates');
 $check(str_contains($sources['generic_edit'], 'theme-section-edit') && str_contains($sources['generic_edit'], 'Location:'), 'generic editor redirects package-composed source templates');
-$check(str_contains($sources['admin'], 'ct_user_can_translate_post') && str_contains($sources['admin'], 'ct_user_can_workspace'), 'Core editor translation controls intersect plugin and Core permissions');
+$check(str_contains($sources['admin'], 'ct_user_can_edit_post_locale') && str_contains($sources['admin'], 'ct_user_can_workspace'), 'Core editor translation controls intersect plugin, locale, and Core permissions');
 $check(str_contains($sources['admin'], "shortcode_layout_editor_after_header") && str_contains($sources['admin'], 'ct_theme_section_template_usages'), 'source renderer editor exposes contextual Theme Template translation controls');
 $check(str_contains($sources['packages'], 'function ct_theme_section_template_usages') && str_contains($sources['packages'], "LOCATE('widget:theme_section'"), 'renderer usage lookup parses bounded package-composed Theme Templates');
 $check(str_contains($sources['editor'], "\$_GET['section']") && str_contains($sources['editor'], 'ct-package-section--focused') && str_contains($sources['editor'], "adiwira_safe_return_to"), 'package editor focuses the requested section and returns safely to its source renderer');
@@ -48,7 +48,7 @@ $check(str_contains($sources['packages'], 'belongs to a different theme'), 'pack
 $check(str_contains($sources['packages'], 'Theme Section package is too large'), 'package writer enforces the v1 reader aggregate size limit');
 $check(str_contains($sources['packages'], 'HTML declarations and comments are not allowed'), 'write validator rejects browser-tokenizer comment ambiguity');
 $check(str_contains($sources['packages'], 'rollBack()') && str_contains($sources['packages'], 'ct_theme_section_translation_meta'), 'failed package saves roll back translation and source metadata together');
-$check(str_contains($sources['helpers'], "'version' => 5") && str_contains($sources['helpers'], "'theme_section_translation_metadata'"), 'versioned export includes source verification metadata');
+$check(str_contains($sources['helpers'], "'version' => 6") && str_contains($sources['helpers'], "'theme_section_translation_metadata'"), 'versioned export includes source verification metadata');
 $check(str_contains($sources['helpers'], 'CREATE TABLE IF NOT EXISTS ct_theme_section_translation_meta'), 'metadata schema creation is idempotent and plugin-owned');
 $check(str_contains($sources['save'], '!$homepage && $slug ===') && str_contains($sources['save'], '(!$homepage && $slug === \'\')'), 'package endpoint preserves homepage empty-slug exception');
 $check(str_contains($sources['list'], '$perPage = 20') && str_contains($sources['list'], '$totalPages'), 'Theme Sections list uses 20-row exact filtered pagination');

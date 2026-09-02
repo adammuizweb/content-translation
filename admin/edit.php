@@ -31,18 +31,21 @@ if ($postId <= 0 || $locale === '') {
 $stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) {
+if (!$post || !ct_user_can_view_post_representation($pdo, $post)) {
     echo '<p>' . __('Post not found.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
     return;
 }
 
-$locales = ct_post_translation_locales($pdo, $post);
+$locales = ct_content_locales($pdo);
 if (!in_array($locale, $locales, true)) {
     echo '<p>' . __('Locale not available for this source post.') . ' <a href="' . h($overviewUrl) . '">' . __('Back') . '</a></p>';
     return;
 }
 
-if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$post['content']) !== null) {
+$sourceLocale = ct_post_source_locale($pdo, $post);
+$isSource = $locale === $sourceLocale;
+$canEdit = ct_user_can_edit_post_locale($pdo, $post, $locale);
+if (!$isSource && $canEdit && $post['type'] === 'theme' && ct_parse_theme_section_composition((string)$post['content']) !== null) {
     $packageEditor = $base . '/?page=admin/tools/content-translation/theme-section-edit&post_id=' . $postId . '&locale=' . urlencode($locale) . '&return_to=' . rawurlencode($returnUrl);
     if (!headers_sent()) {
         header('Location: ' . $packageEditor, true, 302);
@@ -53,21 +56,28 @@ if ($post['type'] === 'theme' && ct_parse_theme_section_composition((string)$pos
     return;
 }
 
-$translationRow = ct_get_translation($pdo, $postId, $locale);
-$translation = $translationRow ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published'];
-$sourceLocale = ct_post_source_locale($pdo, $post);
+$translationRow = $isSource ? null : ct_get_translation($pdo, $postId, $locale);
+$sourceMeta = is_string($post['meta'] ?? null) ? json_decode((string)$post['meta'], true) : [];
+$translation = $isSource ? [
+    'title' => (string)$post['title'],
+    'slug' => (string)$post['slug'],
+    'content' => (string)$post['content'],
+    'meta_description' => is_array($sourceMeta) ? (string)($sourceMeta['meta_tags']['description'] ?? '') : '',
+    'status' => ct_post_source_status($pdo, $post),
+] : ($translationRow ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published']);
 $usesCodeMirror = $post['type'] === 'theme'
     || ct_content_requires_codemirror((string)$post['content'])
     || ct_content_requires_codemirror((string)$translation['content']);
-$publishedTranslation = ct_get_published_translation($pdo, $postId, $locale);
+$publishedTranslation = $isSource ? (ct_source_post_is_public($pdo, $post) ? $translation : null) : ct_get_published_translation($pdo, $postId, $locale);
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
+$coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit' : ($post['type'] === 'theme' ? 'admin/themes/edit' : 'admin/posts/edit')) . '&id=' . $postId;
 ?>
 
 <div class="ct-admin ct-editor">
   <div class="ct-header">
     <div>
-      <h2><?= __('Edit Translation') ?> — <?= h(strtoupper($locale)) ?></h2>
+      <h2><?= $canEdit && !$isSource ? __('Edit Translation') : __('View Translation') ?> — <?= h(strtoupper($locale)) ?></h2>
       <p class="muted">
         <?= h((string)$post['title']) ?>
         <span class="badge"><?= $post['type'] === 'page' ? __('Page') : ($post['type'] === 'theme' ? __('Theme') : __('Post')) ?></span>
@@ -79,6 +89,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
         <a class="btn" href="<?= h($base . '/?page=admin/tools/content-translation/edit&post_id=' . $postId . '&locale=' . urlencode($targetLocale) . '&return_to=' . rawurlencode($returnUrl)) ?>"><?= h(strtoupper($targetLocale)) ?></a>
       <?php endforeach; ?>
       <a class="btn" href="<?= h($returnUrl) ?>"><?= __('Back') ?></a>
+      <?php if ($isSource && $canEdit): ?><a class="btn btn-primary" href="<?= h($coreEditor) ?>"><?= __('Edit Source') ?></a><?php endif; ?>
       <?php if ($publishedTranslation): ?>
         <a class="btn" href="<?= h($previewUrl) ?>" target="_blank" rel="noopener"><?= __('Preview') ?></a>
       <?php endif; ?>
@@ -87,7 +98,14 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
 
   <div class="ct-editor-stack">
     <section class="ct-panel ct-translation-panel<?= $isRtl ? ' ct-rtl-editor' : '' ?>" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
-      <h3><?= __('Translation') ?> (<?= h(strtoupper($locale)) ?>)</h3>
+      <h3><?= $isSource ? __('Canonical source') : __('Translation') ?> (<?= h(strtoupper($locale)) ?>)</h3>
+      <?php if (!$canEdit || $isSource): ?>
+        <div class="ct-field"><label><?= __('Title') ?></label><div class="ct-readonly"><?= h((string)$translation['title']) ?></div></div>
+        <div class="ct-field"><label><?= __('Slug') ?></label><div class="ct-readonly"><code><?= h((string)$translation['slug']) ?></code></div></div>
+        <div class="ct-field"><label><?= __('Meta description') ?></label><div class="ct-readonly"><?= h((string)$translation['meta_description']) ?></div></div>
+        <div class="ct-field"><label><?= __('Status') ?></label><div class="ct-readonly"><?= h(ucfirst((string)$translation['status'])) ?></div></div>
+        <div class="ct-field"><label><?= __('Content') ?></label><pre class="ct-readonly ct-readonly-content ct-source-code"><?= h((string)$translation['content']) ?></pre></div>
+      <?php else: ?>
       <form id="ct-form">
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="post_id" value="<?= $postId ?>">
@@ -128,6 +146,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
           <button type="button" id="ct-delete" class="btn btn-danger"><?= __('Delete Translation') ?></button>
         </div>
       </form>
+      <?php endif; ?>
     </section>
 
     <details class="ct-panel ct-source-panel">
@@ -146,7 +165,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
           <?php if ($usesCodeMirror): ?>
             <pre class="ct-readonly ct-readonly-content ct-source-code"><?= h((string)$post['content']) ?></pre>
           <?php else: ?>
-            <div class="ct-readonly ct-readonly-content"><?= (string)$post['content'] ?></div>
+            <pre class="ct-readonly ct-readonly-content"><?= h((string)$post['content']) ?></pre>
           <?php endif; ?>
         </div>
       </div>
@@ -154,6 +173,7 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
   </div>
 </div>
 
+<?php if ($canEdit && !$isSource): ?>
 <div id="ct-delete-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; z-index:5000;">
   <div style="background:var(--adam-card,#fff); color:inherit; padding:2rem; border-radius:8px; max-width:400px; width:90%;">
     <h3 style="margin-top:0;"><?= __('Delete Translation') ?></h3>
@@ -262,3 +282,4 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
   });
 })();
 </script>
+<?php endif; ?>

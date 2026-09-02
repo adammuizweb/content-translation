@@ -43,7 +43,7 @@ if (!in_array($locale, ct_post_translation_locales($pdo, $sourcePost), true)) {
     echo json_encode(['error' => 'Locale not available for this source post']);
     return;
 }
-if (!ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
+if (!ct_user_can_edit_post_locale($pdo, $sourcePost, $locale, $actorId)) {
     http_response_code(404);
     echo json_encode(['error' => 'Post not found']);
     return;
@@ -80,7 +80,7 @@ if (!in_array($status, ['draft', 'published'], true)) {
     return;
 }
 if (($status === 'published' || (string)($existing['status'] ?? '') === 'published')
-    && !ct_user_can_publish_post_translation($pdo, $sourcePost, $actorId)) {
+    && !ct_user_can_publish_post_translation($pdo, $sourcePost, $locale, $actorId)) {
     http_response_code(403);
     echo json_encode(['error' => __('Publishing translation permission denied.')]);
     return;

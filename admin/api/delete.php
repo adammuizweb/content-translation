@@ -24,7 +24,18 @@ if ($postId <= 0 || $locale === '' || preg_match('/\A[a-f0-9]{64}\z/', $translat
     return;
 }
 
-$ok = ct_delete_translation($pdo, $postId, $locale, $translationState, ct_current_user_id());
+$actorId = ct_current_user_id();
+$source = $pdo->prepare("SELECT id, type, created_by FROM posts WHERE id = ? AND type IN ('article', 'page', 'theme') AND is_deleted = 0 LIMIT 1");
+$source->execute([$postId]);
+$post = $source->fetch(PDO::FETCH_ASSOC);
+if (!$post || $locale === ct_post_source_locale($pdo, $post)
+    || !ct_user_can_edit_post_locale($pdo, $post, $locale, $actorId)) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Post not found']);
+    return;
+}
+
+$ok = ct_delete_translation($pdo, $postId, $locale, $translationState, $actorId);
 
 echo json_encode($ok
     ? ['success' => true]

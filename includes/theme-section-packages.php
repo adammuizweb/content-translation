@@ -469,7 +469,7 @@ if (!function_exists('ct_theme_section_package_format')) {
     function ct_translation_row_state_token(?array $row): string {
         if ($row === null) return hash('sha256', 'ct-translation-row:missing');
         $state = [];
-        foreach (['id', 'post_id', 'locale', 'title', 'slug', 'content', 'meta_description', 'status', 'created_at', 'updated_at'] as $key) {
+        foreach (['id', 'post_id', 'locale', 'title', 'slug', 'content', 'meta_description', 'status', 'updated_by', 'created_at', 'updated_at'] as $key) {
             $state[$key] = $row[$key] ?? null;
         }
         return hash('sha256', json_encode($state, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
@@ -520,10 +520,18 @@ if (!function_exists('ct_theme_section_package_format')) {
         $ownsTransaction = !$pdo->inTransaction();
         if ($ownsTransaction) $pdo->beginTransaction();
         try {
-            $postStmt = $pdo->prepare("SELECT id, type, title, slug, content, status FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE");
+            $actorId = ct_current_user_id();
+            if (!authorization_lock_actor_permissions($pdo, $actorId)) {
+                throw new RuntimeException('Theme Section actor permission changed.');
+            }
+            $postStmt = $pdo->prepare("SELECT id, type, title, slug, content, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE");
             $postStmt->execute([$postId]);
             $post = $postStmt->fetch(PDO::FETCH_ASSOC);
             if (!$post) throw new RuntimeException('Source Theme Template no longer exists.');
+            if (!authorization_lock_owner_contexts($pdo, [(int)($post['created_by'] ?? 0)])
+                || !ct_user_can_edit_post_locale($pdo, $post, $locale, $actorId, true)) {
+                throw new RuntimeException('Theme Section translation permission changed.');
+            }
             $source = ct_theme_section_source_resource($pdo, $post);
             if ($source === null) throw new RuntimeException('Source Theme Template composition is no longer valid.');
             $translationStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE');
@@ -558,7 +566,7 @@ if (!function_exists('ct_theme_section_package_format')) {
             if (($candidate['status'] ?? '') === 'published' && !ct_post_translation_is_complete($pdo, $candidate)) {
                 throw new InvalidArgumentException('Published Theme Section translations require complete page metadata.');
             }
-            if (!ct_save_translation($pdo, $postId, $locale, $candidate)) throw new RuntimeException('Translation save failed.');
+            if (!ct_save_translation($pdo, $postId, $locale, $candidate, $actorId)) throw new RuntimeException('Translation save failed.');
             $meta = $pdo->prepare('INSERT INTO ct_theme_section_translation_meta (post_id, locale, source_fingerprint) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE source_fingerprint = VALUES(source_fingerprint)');
             if (!$meta->execute([$postId, $locale, (string)$source['source_fingerprint']])) throw new RuntimeException('Source verification metadata save failed.');
             if ($ownsTransaction) $pdo->commit();

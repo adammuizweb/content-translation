@@ -35,17 +35,43 @@ function ct_post_permission_key(array $post, string $action): ?string {
     };
 }
 
-function ct_user_can_translate_post(PDO $pdo, array $post, string $action = 'update', ?int $userId = null): bool {
+function ct_user_can_view_post_representation(PDO $pdo, array $post, ?int $userId = null): bool {
     $userId ??= ct_current_user_id();
     if (!ct_user_can_workspace($pdo, $userId)) return false;
     if (($post['type'] ?? '') === 'theme' && !ct_user_is_site_owner($pdo, $userId)) return false;
-    $permission = ct_post_permission_key($post, $action);
+    $permission = ct_post_permission_key($post, 'read');
     return $permission !== null && user_can($pdo, $userId, $permission, ['owner_id' => (int)($post['created_by'] ?? 0)]);
 }
 
-function ct_user_can_publish_post_translation(PDO $pdo, array $post, ?int $userId = null): bool {
+function ct_user_has_locale_edit_grant(PDO $pdo, int $userId, string $locale, bool $lock = false): bool {
+    if ($userId <= 0 || !in_array($locale, ct_content_locales($pdo), true)) return false;
+    if (ct_user_is_site_owner($pdo, $userId)) return true;
+    $suffix = $lock && $pdo->inTransaction() ? ' FOR UPDATE' : '';
+    $direct = $pdo->prepare('SELECT user_id FROM ct_user_locale_edit_grants WHERE user_id = ? AND locale = ? LIMIT 1' . $suffix);
+    $direct->execute([$userId, $locale]);
+    if ($direct->fetchColumn()) return true;
+    $role = $pdo->prepare('SELECT g.role_id FROM ct_role_locale_edit_grants g
+        INNER JOIN user_roles ur ON ur.role_id = g.role_id
+        WHERE ur.user_id = ? AND g.locale = ? AND (ur.expires_at IS NULL OR ur.expires_at > NOW()) LIMIT 1' . $suffix);
+    $role->execute([$userId, $locale]);
+    return (bool)$role->fetchColumn();
+}
+
+function ct_user_can_edit_post_locale(PDO $pdo, array $post, string $locale, ?int $userId = null, bool $lockGrant = false): bool {
+    $userId ??= ct_current_user_id();
+    $permission = ct_post_permission_key($post, 'update');
+    return ct_user_can_view_post_representation($pdo, $post, $userId)
+        && $permission !== null
+        && user_can($pdo, $userId, $permission, ['owner_id' => (int)($post['created_by'] ?? 0)])
+        && ct_user_has_locale_edit_grant($pdo, $userId, $locale, $lockGrant);
+}
+
+function ct_user_can_publish_post_translation(PDO $pdo, array $post, string $locale, ?int $userId = null): bool {
+    $userId ??= ct_current_user_id();
+    if (!ct_user_can_edit_post_locale($pdo, $post, $locale, $userId)) return false;
     if (($post['type'] ?? '') === 'theme') return ct_user_is_site_owner($pdo, $userId);
-    return ct_user_can_translate_post($pdo, $post, 'publish', $userId);
+    $permission = ct_post_permission_key($post, 'publish');
+    return $permission !== null && user_can($pdo, $userId, $permission, ['owner_id' => (int)($post['created_by'] ?? 0)]);
 }
 
 function ct_sanitize_translation_content(PDO $pdo, array $post, string $content, ?int $userId = null): string {
@@ -81,6 +107,7 @@ if (!function_exists('ct_ensure_schema')) {
                 slug VARCHAR(255) NOT NULL DEFAULT '',
                 content MEDIUMTEXT NULL,
                 status ENUM('draft','published') NOT NULL DEFAULT 'published',
+                updated_by INT UNSIGNED NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_post_locale (post_id, locale),
@@ -88,6 +115,86 @@ if (!function_exists('ct_ensure_schema')) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             ct_add_column_if_missing($pdo, 'post_translations', 'status', "ENUM('draft','published') NOT NULL DEFAULT 'published'");
             ct_add_column_if_missing($pdo, 'post_translations', 'meta_description', "VARCHAR(320) NOT NULL DEFAULT ''");
+            ct_add_column_if_missing($pdo, 'post_translations', 'updated_by', 'INT UNSIGNED NULL');
+            $updatedByIndex = $pdo->prepare('SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?');
+            $updatedByIndex->execute(['post_translations', 'idx_post_translations_updated_by']);
+            if ((int)$updatedByIndex->fetchColumn() === 0) {
+                $pdo->exec('ALTER TABLE post_translations ADD KEY idx_post_translations_updated_by (updated_by)');
+            }
+            $updatedByConstraint = $pdo->prepare('SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?');
+            $updatedByConstraint->execute(['post_translations', 'fk_post_translations_updated_by']);
+            if ((int)$updatedByConstraint->fetchColumn() === 0) {
+                $pdo->exec('ALTER TABLE post_translations ADD CONSTRAINT fk_post_translations_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE');
+            }
+            $grantTableProbe = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('ct_user_locale_edit_grants', 'ct_role_locale_edit_grants')");
+            $grantTableProbe->execute();
+            $grantTablesExisted = (int)$grantTableProbe->fetchColumn() === 2;
+            $pdo->exec("CREATE TABLE IF NOT EXISTS ct_user_locale_edit_grants (
+                user_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(16) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, locale),
+                KEY idx_ct_user_locale (locale),
+                CONSTRAINT fk_ct_user_locale_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS ct_role_locale_edit_grants (
+                role_id INT UNSIGNED NOT NULL,
+                locale VARCHAR(16) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (role_id, locale),
+                KEY idx_ct_role_locale (locale),
+                CONSTRAINT fk_ct_role_locale_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $grantSeedState = $pdo->prepare('SELECT `value` FROM settings WHERE `key` = ? LIMIT 1');
+            $grantSeedState->execute(['content_translation_locale_grants_seeded']);
+            $grantSeeded = (string)($grantSeedState->fetchColumn() ?: '') === '1';
+            $preferenceStmt = $pdo->prepare('SELECT `value` FROM settings WHERE `key` = ? LIMIT 1');
+            $preferenceStmt->execute(['content_translation_author_locales']);
+            $preferenceRaw = (string)($preferenceStmt->fetchColumn() ?: '');
+            $grantCountStmt = $pdo->prepare('SELECT
+                (SELECT COUNT(*) FROM ct_user_locale_edit_grants)
+                + (SELECT COUNT(*) FROM ct_role_locale_edit_grants)');
+            $grantCountStmt->execute();
+            $grantsMissingForPreferences = (int)$grantCountStmt->fetchColumn() === 0
+                && $preferenceRaw !== '' && $preferenceRaw !== '[]' && $preferenceRaw !== '{}';
+            if (!$grantSeeded || !$grantTablesExisted || $grantsMissingForPreferences) {
+                $preferences = json_decode($preferenceRaw, true);
+                if (!is_array($preferences)) $preferences = [];
+                $seedGrant = $pdo->prepare('INSERT IGNORE INTO ct_user_locale_edit_grants (user_id, locale)
+                    SELECT id, ? FROM users WHERE id = ? AND is_deleted = 0');
+                $preferredUserIds = [];
+                foreach ($preferences as $userId => $locale) {
+                    $userId = (int)$userId;
+                    $locale = trim((string)$locale);
+                    if ($userId > 0 && preg_match('/\A[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?\z/', $locale) === 1) {
+                        $seedGrant->execute([$locale, $userId]);
+                        $preferredUserIds[] = $userId;
+                    }
+                }
+                $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : 'en';
+                $workspaceUserIds = [];
+                if (preg_match('/\A[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?\z/', $defaultLocale) === 1) {
+                    $workspaceUsers = $pdo->prepare("SELECT DISTINCT u.id
+                        FROM users u
+                        INNER JOIN user_roles ur ON ur.user_id = u.id AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+                        INNER JOIN role_permissions rp ON rp.role_id = ur.role_id
+                        WHERE u.is_deleted = 0 AND u.is_locked = 0
+                          AND rp.permission_key = 'plugin.content-translation.workspace.access'");
+                    $workspaceUsers->execute();
+                    $workspaceUserIds = $workspaceUsers->fetchAll(PDO::FETCH_COLUMN);
+                    foreach ($workspaceUserIds as $workspaceUserId) {
+                        $workspaceUserId = (int)$workspaceUserId;
+                        if ($workspaceUserId > 0 && !in_array($workspaceUserId, $preferredUserIds, true)) {
+                            $seedGrant->execute([$defaultLocale, $workspaceUserId]);
+                        }
+                    }
+                }
+                if ($preferences !== [] || $workspaceUserIds !== []) {
+                    $markSeeded = $pdo->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, '1') ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+                    $markSeeded->execute(['content_translation_locale_grants_seeded']);
+                }
+            }
             $pdo->exec("CREATE TABLE IF NOT EXISTS ct_post_workflows (
                 post_id INT UNSIGNED NOT NULL PRIMARY KEY,
                 source_locale VARCHAR(16) NOT NULL,
@@ -319,7 +426,8 @@ if (!function_exists('ct_ensure_schema')) {
         $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
         if ($userId <= 0 || !ct_user_can_workspace($pdo, $userId)) return $default;
         $preferences = ct_author_locale_preferences($pdo);
-        return $preferences[$userId] ?? $default;
+        $preferred = $preferences[$userId] ?? null;
+        return is_string($preferred) && ct_user_has_locale_edit_grant($pdo, $userId, $preferred) ? $preferred : $default;
     }
 
     function ct_set_author_locale_preferences(PDO $pdo, array $preferences): bool {
@@ -330,11 +438,57 @@ if (!function_exists('ct_ensure_schema')) {
             $userId = (int)$userId;
             $locale = trim((string)$locale);
             if ($userId <= 0 || !ct_user_can_workspace($pdo, $userId)
-                || $locale === '' || $locale === $default || !in_array($locale, $enabled, true)) continue;
+                || $locale === '' || $locale === $default || !in_array($locale, $enabled, true)
+                || !ct_user_has_locale_edit_grant($pdo, $userId, $locale)) continue;
             $clean[(string)$userId] = $locale;
         }
         return function_exists('settings_set')
             && settings_set($pdo, 'content_translation_author_locales', json_encode($clean, JSON_UNESCAPED_SLASHES));
+    }
+
+    function ct_user_locale_edit_grants(PDO $pdo): array {
+        ct_ensure_schema($pdo);
+        $rows = $pdo->query('SELECT user_id, locale FROM ct_user_locale_edit_grants ORDER BY user_id, locale')->fetchAll(PDO::FETCH_ASSOC);
+        $grants = [];
+        foreach ($rows as $row) $grants[(int)$row['user_id']][] = (string)$row['locale'];
+        return $grants;
+    }
+
+    function ct_role_locale_edit_grants(PDO $pdo): array {
+        ct_ensure_schema($pdo);
+        $rows = $pdo->query('SELECT role_id, locale FROM ct_role_locale_edit_grants ORDER BY role_id, locale')->fetchAll(PDO::FETCH_ASSOC);
+        $grants = [];
+        foreach ($rows as $row) $grants[(int)$row['role_id']][] = (string)$row['locale'];
+        return $grants;
+    }
+
+    function ct_replace_locale_edit_grants(PDO $pdo, array $userInput, array $roleInput): void {
+        $locales = ct_content_locales($pdo);
+        $userIds = array_map('intval', $pdo->query('SELECT id FROM users WHERE is_deleted = 0 AND is_locked = 0')->fetchAll(PDO::FETCH_COLUMN));
+        $roleIds = array_map('intval', $pdo->query('SELECT id FROM roles')->fetchAll(PDO::FETCH_COLUMN));
+        $cleanUsers = [];
+        foreach ($userInput as $userId => $selected) {
+            $userId = (int)$userId;
+            if (!in_array($userId, $userIds, true) || !is_array($selected)) continue;
+            foreach (array_unique(array_map('strval', $selected)) as $locale) {
+                if (in_array($locale, $locales, true)) $cleanUsers[] = [$userId, $locale];
+            }
+        }
+        $cleanRoles = [];
+        foreach ($roleInput as $roleId => $selected) {
+            $roleId = (int)$roleId;
+            if (!in_array($roleId, $roleIds, true) || !is_array($selected)) continue;
+            foreach (array_unique(array_map('strval', $selected)) as $locale) {
+                if (in_array($locale, $locales, true)) $cleanRoles[] = [$roleId, $locale];
+            }
+        }
+
+        $pdo->exec('DELETE FROM ct_user_locale_edit_grants');
+        $insertUser = $pdo->prepare('INSERT INTO ct_user_locale_edit_grants (user_id, locale) VALUES (?, ?)');
+        foreach ($cleanUsers as $grant) $insertUser->execute($grant);
+        $pdo->exec('DELETE FROM ct_role_locale_edit_grants');
+        $insertRole = $pdo->prepare('INSERT INTO ct_role_locale_edit_grants (role_id, locale) VALUES (?, ?)');
+        foreach ($cleanRoles as $grant) $insertRole->execute($grant);
     }
 
     function ct_post_workflow(PDO $pdo, int $postId): ?array {
@@ -584,6 +738,8 @@ if (!function_exists('ct_ensure_schema')) {
             'theme_string_translations' => 'SELECT * FROM ct_theme_string_translations ORDER BY theme_folder, scope, source_hash, locale',
             'theme_section_translation_metadata' => 'SELECT post_id, locale, source_fingerprint, created_at, updated_at FROM ct_theme_section_translation_meta ORDER BY post_id, locale',
             'shortcode_preset_translations' => "SELECT spt.*, p.slug AS source_slug, p.title AS source_title FROM shortcode_preset_translations spt INNER JOIN posts p ON p.id = spt.preset_id AND p.type = 'sc_preset' AND p.is_deleted = 0 ORDER BY spt.preset_id, spt.locale",
+            'direct_user_locale_edit_grants' => 'SELECT g.*, u.email AS user_email FROM ct_user_locale_edit_grants g INNER JOIN users u ON u.id = g.user_id ORDER BY g.user_id, g.locale',
+            'role_locale_edit_grants' => 'SELECT g.*, r.slug AS role_slug, r.name AS role_name FROM ct_role_locale_edit_grants g INNER JOIN roles r ON r.id = g.role_id ORDER BY g.role_id, g.locale',
         ];
         $translations = [];
         foreach ($tables as $name => $sql) {
@@ -592,12 +748,13 @@ if (!function_exists('ct_ensure_schema')) {
 
         return [
             'format' => 'jyavani-content-translation-export',
-            'version' => 5,
+            'version' => 6,
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),
                 'locale_directions' => ct_locale_directions($pdo),
                 'sitemap_locales' => ct_sitemap_locales($pdo),
+                'author_locale_preferences' => ct_author_locale_preferences($pdo),
             ],
             'translations' => $translations,
         ];
@@ -635,13 +792,13 @@ if (!function_exists('ct_ensure_schema')) {
         return $complete;
     }
 
-    function ct_save_translation(PDO $pdo, int $postId, string $locale, array $data): bool {
+    function ct_save_translation(PDO $pdo, int $postId, string $locale, array $data, ?int $actorId = null): bool {
         ct_ensure_schema($pdo);
         try {
             $status = (string)($data['status'] ?? 'published');
-            $stmt = $pdo->prepare("INSERT INTO post_translations (post_id, locale, title, slug, content, meta_description, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE title = VALUES(title), slug = VALUES(slug), content = VALUES(content), meta_description = VALUES(meta_description), status = VALUES(status)");
+            $stmt = $pdo->prepare("INSERT INTO post_translations (post_id, locale, title, slug, content, meta_description, status, updated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE title = VALUES(title), slug = VALUES(slug), content = VALUES(content), meta_description = VALUES(meta_description), status = VALUES(status), updated_by = VALUES(updated_by)");
             $saved = $stmt->execute([
                 $postId,
                 $locale,
@@ -650,6 +807,7 @@ if (!function_exists('ct_ensure_schema')) {
                 (string)($data['content'] ?? ''),
                 trim((string)($data['meta_description'] ?? '')),
                 in_array($status, ['draft', 'published'], true) ? $status : 'published',
+                $actorId !== null && $actorId > 0 ? $actorId : null,
             ]);
             return $saved && ct_recompute_post_effective_status($pdo, $postId);
         } catch (Throwable $e) {
@@ -676,7 +834,7 @@ if (!function_exists('ct_ensure_schema')) {
                 throw new RuntimeException('That locale is not available for this source post.');
             }
             if (!authorization_lock_owner_contexts($pdo, [(int)$sourcePost['created_by']])
-                || !ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
+                || !ct_user_can_edit_post_locale($pdo, $sourcePost, $locale, $actorId, true)) {
                 throw new RuntimeException('Content translation permission denied.');
             }
 
@@ -687,10 +845,10 @@ if (!function_exists('ct_ensure_schema')) {
                 throw new RuntimeException('This translation was changed by another editor. Reload before saving.');
             }
             if (((string)($data['status'] ?? 'published') === 'published' || (string)($current['status'] ?? '') === 'published')
-                && !ct_user_can_publish_post_translation($pdo, $sourcePost, $actorId)) {
+                && !ct_user_can_publish_post_translation($pdo, $sourcePost, $locale, $actorId)) {
                 throw new RuntimeException('Publishing translation permission denied.');
             }
-            if (!ct_save_translation($pdo, $postId, $locale, $data)) throw new RuntimeException('Translation save failed.');
+            if (!ct_save_translation($pdo, $postId, $locale, $data, $actorId)) throw new RuntimeException('Translation save failed.');
 
             $savedStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1');
             $savedStmt->execute([$postId, $locale]);
@@ -734,7 +892,7 @@ if (!function_exists('ct_ensure_schema')) {
                 throw new RuntimeException('That locale is not available for this source post.');
             }
             if (!$sourcePost || !authorization_lock_owner_contexts($pdo, [(int)$sourcePost['created_by']])
-                || !ct_user_can_translate_post($pdo, $sourcePost, 'update', $actorId)) {
+                || !ct_user_can_edit_post_locale($pdo, $sourcePost, $locale, $actorId, true)) {
                 throw new RuntimeException('Content translation permission denied.');
             }
             $currentStmt = $pdo->prepare("SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE");
@@ -746,7 +904,7 @@ if (!function_exists('ct_ensure_schema')) {
                 throw new RuntimeException('This translation was changed by another editor. Reload before deleting.');
             }
             if ((string)($current['status'] ?? '') === 'published'
-                && !ct_user_can_publish_post_translation($pdo, $sourcePost, $actorId)) {
+                && !ct_user_can_publish_post_translation($pdo, $sourcePost, $locale, $actorId)) {
                 throw new RuntimeException('Publishing translation permission denied.');
             }
             $stmt = $pdo->prepare("DELETE FROM post_translations WHERE post_id = ? AND locale = ?");

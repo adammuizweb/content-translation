@@ -50,6 +50,10 @@ $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, type TEXT, title TEXT, slug TEXT, content TEXT, meta TEXT, status TEXT, created_by INTEGER, is_deleted INTEGER)');
 $pdo->exec('CREATE TABLE ct_post_workflows (post_id INTEGER PRIMARY KEY, source_locale TEXT, author_locale TEXT, source_status TEXT)');
 $pdo->exec('CREATE TABLE post_translations (post_id INTEGER, locale TEXT, title TEXT, slug TEXT, content TEXT, meta_description TEXT, status TEXT)');
+$pdo->exec('CREATE TABLE ct_user_locale_edit_grants (user_id INTEGER, locale TEXT, PRIMARY KEY (user_id, locale))');
+$pdo->exec('CREATE TABLE ct_role_locale_edit_grants (role_id INTEGER, locale TEXT, PRIMARY KEY (role_id, locale))');
+$pdo->exec('CREATE TABLE user_roles (user_id INTEGER, role_id INTEGER, expires_at TEXT)');
+$pdo->exec("INSERT INTO ct_user_locale_edit_grants VALUES (7, 'id'), (7, 'de')");
 $pdo->exec('CREATE TABLE category_translations (category_id INTEGER, locale TEXT, name TEXT, status TEXT)');
 $pdo->exec("INSERT INTO posts VALUES (22, 'article', '[EN translation pending]', 'ct-pending-en-22', '', NULL, 'published', 7, 0)");
 $pdo->exec("INSERT INTO ct_post_workflows VALUES (22, 'en', 'id', 'draft')");
@@ -58,7 +62,7 @@ $pdo->exec("INSERT INTO category_translations VALUES (1, 'id', 'Berita', 'publis
 $pdo->exec("INSERT INTO category_translations VALUES (2, 'id', 'Draf Tersembunyi', 'draft')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.13.1', 'plugin release is 1.13.1');
+$check(($manifest['version'] ?? '') === '1.13.2', 'plugin release is 1.13.2');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -124,10 +128,10 @@ $check(str_contains($frontend, 'ct_source_post_is_public')
     && str_contains($frontend, "add_filter('sitemap_query_clauses'")
     && !str_contains($frontend, '$.content_translation.authoring_locale')
     && !str_contains($frontend, 'register_frontend_route'), 'Core fallback routing overlays translations while hiding an unpublished EN source');
-$check(str_contains($edit, 'ct_post_translation_locales')
-    && str_contains($index, 'ct_post_translation_locales')
+$check(str_contains($edit, 'ct_content_locales')
+    && str_contains($index, 'ct_content_locales')
     && str_contains($save, 'ct_post_translation_locales')
-    && str_contains($edit, '$targetLocale'), 'translation screens expose every non-source locale including DE');
+    && str_contains($edit, '$targetLocale'), 'translation screens expose canonical and translated content locales including DE');
 $check(str_contains($helpers, 'ct_recompute_post_effective_status')
     && str_contains($helpers, "DELETE FROM post_translations")
     && str_contains($helpers, 'Post visibility could not be updated.'), 'translation saves and deletes recompute aggregate visibility');

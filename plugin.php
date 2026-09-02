@@ -60,6 +60,8 @@ add_action('plugin_uninstall', function (string $name): void {
         'ct_theme_section_translation_meta',
         'shortcode_preset_translations',
         'ct_ui_translation_seeds',
+        'ct_user_locale_edit_grants',
+        'ct_role_locale_edit_grants',
     ] as $table) {
         $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
     }
