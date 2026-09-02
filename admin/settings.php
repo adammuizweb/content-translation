@@ -30,7 +30,10 @@ $authorRows = $pdo->query("SELECT u.id, u.name, u.username, u.email,
     WHERE u.is_deleted = 0 AND u.is_locked = 0
     ORDER BY COALESCE(NULLIF(u.name, ''), NULLIF(u.username, ''), u.email) ASC")->fetchAll(PDO::FETCH_ASSOC);
 $authors = array_values(array_filter($authorRows, static fn(array $user): bool =>
-    user_can($pdo, (int)$user['id'], 'core.posts.create')
+    ct_user_can_workspace($pdo, (int)$user['id'])
+    && (user_can($pdo, (int)$user['id'], 'core.posts.create')
+        || user_can($pdo, (int)$user['id'], 'core.pages.create')
+        || user_can($pdo, (int)$user['id'], 'core.theme_content.create'))
 ));
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !empty($_POST['ct_save_settings'])) {
@@ -167,10 +170,10 @@ $flashType = $_GET['flash_type'] ?? 'success';
     <section class="ct-settings-card ct-settings-card--authors">
       <div class="ct-settings-card__heading">
         <label><?= __('Default writing language by author') ?></label>
-        <span class="muted"><?= __('Authors assigned to a translation language can use the standard Add Post screen. Their article is automatically stored for that locale while the site default language stays unchanged.') ?></span>
+        <span class="muted"><?= __('Authors assigned to a translation language can use the standard Add Post and Add Page screens. Their content is automatically stored for that locale while the site default language stays unchanged.') ?></span>
       </div>
       <?php if ($authors === []): ?>
-        <p class="muted"><?= __('No active users can create posts.') ?></p>
+        <p class="muted"><?= __('No active users can create translatable content.') ?></p>
       <?php else: ?>
         <div class="ct-author-language-list">
           <?php foreach ($authors as $author): ?>

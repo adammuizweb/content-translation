@@ -15,7 +15,7 @@ Content Translation supports five separate theme workflows:
 All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-Content Translation `1.13.0` requires Jyavani Core `2.3.95` or newer. Core
+Content Translation `1.13.1` requires Jyavani Core `2.3.96` or newer. Core
 `2.3.54` introduced the generic Theme Section renderer and hooks required by the
 `ct-theme-sections-v1` adapter; Core `2.3.55` added the canonical content routes
 used by localized Theme Templates and their sitemaps. Core `2.3.57` supplies the

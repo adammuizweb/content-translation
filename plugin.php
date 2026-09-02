@@ -27,7 +27,7 @@ add_filter('plugin_state_change_preflight', function (array $state, string $name
 
     return [
         'allowed' => false,
-        'message' => __('Content Translation cannot be disabled or uninstalled while localized article workflows exist.'),
+        'message' => __('Content Translation cannot be disabled or uninstalled while localized content workflows exist.'),
     ];
 }, 10, 3);
 
@@ -43,7 +43,7 @@ add_action('plugin_uninstall', function (string $name): void {
         $pdo->exec('DELETE ui FROM ui_translations ui INNER JOIN ct_ui_translation_seeds owned ON owned.scope = ui.scope AND owned.source = ui.source AND owned.locale = ui.locale AND owned.value = ui.value');
     }
 
-    $pdo->exec("UPDATE posts p INNER JOIN ct_post_workflows w ON w.post_id = p.id SET p.status = w.source_status WHERE p.type = 'article' AND p.is_deleted = 0");
+    $pdo->exec("UPDATE posts p INNER JOIN ct_post_workflows w ON w.post_id = p.id SET p.status = w.source_status WHERE p.type IN ('article', 'page') AND p.is_deleted = 0");
     $pdo->exec("UPDATE posts SET status = 'draft', meta = JSON_REMOVE(meta, '$.content_translation.authoring_locale') WHERE type = 'article' AND is_deleted = 0 AND JSON_VALID(meta) AND JSON_EXTRACT(meta, '$.content_translation.authoring_locale') IS NOT NULL");
 
     foreach ([

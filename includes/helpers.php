@@ -317,7 +317,7 @@ if (!function_exists('ct_ensure_schema')) {
 
     function ct_author_default_locale(PDO $pdo, int $userId): string {
         $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
-        if ($userId <= 0) return $default;
+        if ($userId <= 0 || !ct_user_can_workspace($pdo, $userId)) return $default;
         $preferences = ct_author_locale_preferences($pdo);
         return $preferences[$userId] ?? $default;
     }
@@ -329,7 +329,8 @@ if (!function_exists('ct_ensure_schema')) {
         foreach ($preferences as $userId => $locale) {
             $userId = (int)$userId;
             $locale = trim((string)$locale);
-            if ($userId <= 0 || $locale === '' || $locale === $default || !in_array($locale, $enabled, true)) continue;
+            if ($userId <= 0 || !ct_user_can_workspace($pdo, $userId)
+                || $locale === '' || $locale === $default || !in_array($locale, $enabled, true)) continue;
             $clean[(string)$userId] = $locale;
         }
         return function_exists('settings_set')
@@ -1565,6 +1566,43 @@ if (!function_exists('ct_ensure_schema')) {
         $status = in_array(($data['status'] ?? 'published'), ['draft', 'published'], true) ? $data['status'] : 'published';
         $stmt = $pdo->prepare("INSERT INTO category_translations (category_id, locale, name, slug, description, status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), slug = VALUES(slug), description = VALUES(description), status = VALUES(status)");
         return $stmt->execute([$categoryId, $locale, (string)($data['name'] ?? ''), (string)($data['slug'] ?? ''), (string)($data['description'] ?? ''), $status]);
+    }
+
+    function ct_category_translation_slug_conflict(PDO $pdo, int $categoryId, string $locale, string $slug, ?int $parentId): bool {
+        $stmt = $pdo->prepare("SELECT 1
+            FROM category_translations ct
+            INNER JOIN categories c ON c.id = ct.category_id
+            WHERE ct.category_id <> ?
+              AND ct.locale = ?
+              AND ct.slug = ?
+              AND ct.status = 'published'
+              AND c.is_deleted = 0
+              AND ((c.parent_id IS NULL AND ? IS NULL) OR c.parent_id = ?)
+            LIMIT 1 FOR UPDATE");
+        $stmt->execute([$categoryId, $locale, $slug, $parentId, $parentId]);
+        return (bool)$stmt->fetchColumn();
+    }
+
+    function ct_assert_category_translation_paths_unique(PDO $pdo, int $categoryId): void {
+        $categoryStmt = $pdo->prepare('SELECT parent_id FROM categories WHERE id = ? AND is_deleted = 0 LIMIT 1');
+        $categoryStmt->execute([$categoryId]);
+        $parent = $categoryStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$parent) return;
+        $parentId = $parent['parent_id'] === null ? null : (int)$parent['parent_id'];
+
+        $translations = $pdo->prepare("SELECT locale, slug FROM category_translations WHERE category_id = ? AND status = 'published' AND TRIM(slug) <> '' ORDER BY locale FOR UPDATE");
+        $translations->execute([$categoryId]);
+        foreach ($translations->fetchAll(PDO::FETCH_ASSOC) ?: [] as $translation) {
+            if (ct_category_translation_slug_conflict(
+                $pdo,
+                $categoryId,
+                (string)$translation['locale'],
+                (string)$translation['slug'],
+                $parentId
+            )) {
+                throw new RuntimeException('A translated category slug conflicts with a sibling category.');
+            }
+        }
     }
 
     function ct_menu_item_translations_for_menu(PDO $pdo, int $menuId): array {

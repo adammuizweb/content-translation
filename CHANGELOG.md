@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.13.1 - 2026-09-02
+
+- Extend assigned-language author workflows to Pages and localized Theme Template dashboard representation.
+- Localize canonical Category labels and links through optional Core adapters while preserving owner-scoped mutations.
+- Reauthorize category translations under ordered transaction locks and reject ambiguous localized sibling paths.
+- Require translation workspace access before assigning or applying an alternate author writing language.
+
 ## 1.13.0 - 2026-09-02
 
 - Add reviewed Theme Zone text translations with explicit widget schemas, source fingerprints, and optimistic editor state.

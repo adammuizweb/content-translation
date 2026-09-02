@@ -36,6 +36,7 @@ function settings_set(PDO $pdo, string $key, mixed $value, int $autoload = 1): b
 function content_default_locale(): string { return 'en'; }
 function get_supported_locales(): array { return ['en', 'id', 'de']; }
 function __(string $text): string { return $text; }
+function user_can(PDO $pdo, int $userId, string $permission, array $context = []): bool { return $userId > 0; }
 function add_action(string $hook, callable $callback, int $priority = 10, int $acceptedArgs = 1): void {
     $GLOBALS['authorLanguageActions'][$hook][$priority][] = $callback;
 }
@@ -49,17 +50,24 @@ $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, type TEXT, title TEXT, slug TEXT, content TEXT, meta TEXT, status TEXT, created_by INTEGER, is_deleted INTEGER)');
 $pdo->exec('CREATE TABLE ct_post_workflows (post_id INTEGER PRIMARY KEY, source_locale TEXT, author_locale TEXT, source_status TEXT)');
 $pdo->exec('CREATE TABLE post_translations (post_id INTEGER, locale TEXT, title TEXT, slug TEXT, content TEXT, meta_description TEXT, status TEXT)');
+$pdo->exec('CREATE TABLE category_translations (category_id INTEGER, locale TEXT, name TEXT, status TEXT)');
 $pdo->exec("INSERT INTO posts VALUES (22, 'article', '[EN translation pending]', 'ct-pending-en-22', '', NULL, 'published', 7, 0)");
 $pdo->exec("INSERT INTO ct_post_workflows VALUES (22, 'en', 'id', 'draft')");
 $pdo->exec("INSERT INTO post_translations VALUES (22, 'id', 'Artikel ID', 'artikel-id', 'Isi', '', 'published')");
+$pdo->exec("INSERT INTO category_translations VALUES (1, 'id', 'Berita', 'published')");
+$pdo->exec("INSERT INTO category_translations VALUES (2, 'id', 'Draf Tersembunyi', 'draft')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.13.0', 'plugin release is 1.13.0');
+$check(($manifest['version'] ?? '') === '1.13.1', 'plugin release is 1.13.1');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
 $check(str_contains($settings, 'author_locales[')
-    && str_contains($settings, "'core.posts.create'"), 'settings list only users who can create posts');
+    && str_contains($settings, 'ct_user_can_workspace($pdo, (int)$user[\'id\'])')
+    && str_contains($settings, "'core.posts.create'")
+    && str_contains($settings, "'core.pages.create'")
+    && str_contains($settings, "'core.theme_content.create'"),
+    'settings list users who can create translatable content');
 $check(str_contains($migration, "includes/workflow-migration.php")
     && str_contains($migration, 'ct_130_migrate_legacy_authored_posts')
     && str_contains($workflowMigration, 'FOR UPDATE')
@@ -69,8 +77,18 @@ $check(str_contains($admin, "add_action('admin_post_before_add_commit'")
     && str_contains($admin, "add_action('admin_post_before_edit_commit'")
     && str_contains($admin, "add_action('admin_posts_bulk_before_mutation'")
     && str_contains($admin, "add_filter('admin_post_editor_status'")
+    && str_contains($admin, "add_action('admin_page_before_add_commit'")
+    && str_contains($admin, "add_action('admin_page_before_edit_commit'")
+    && str_contains($admin, "add_action('admin_pages_bulk_before_mutation'")
+    && str_contains($admin, "add_filter('admin_page_editor_status'")
     && str_contains($admin, 'ct_create_authored_post_workflow')
-    && str_contains($admin, 'ct_update_authored_post_source'), 'Core transaction hooks own canonical source workflow changes');
+    && str_contains($admin, "type IN ('article', 'page')")
+    && str_contains($admin, 'ct_update_authored_post_source'),
+    'Core transaction hooks own canonical article and page source workflow changes');
+$schemaInit = strpos($admin, 'ct_ensure_schema($pdo);');
+$workspaceGate = strpos($admin, 'if (!ct_user_can_workspace($pdo)) return;');
+$check($schemaInit !== false && $workspaceGate !== false && $schemaInit < $workspaceGate,
+    'admin schema initialization completes before assigned authors enter Core content transactions');
 $check(str_contains($admin, "add_action('admin_post_after_add'")
     && str_contains($admin, 'RELEASE_LOCK')
     && str_contains($admin, 'GET_LOCK')
@@ -81,7 +99,27 @@ $check(str_contains($admin, "add_filter('post_list_join'")
     && str_contains($admin, 'ct_post_list_workflow.source_status')
     && str_contains($admin, 'ct_post_list_display.status')
     && str_contains($admin, "add_filter('post_list_status_expression'")
-    && str_contains($admin, "add_filter('post_list_search_condition'"), 'dashboard rows, filters, search, and counts use the current writing locale');
+    && str_contains($admin, "add_filter('post_list_search_condition'")
+    && str_contains($admin, "add_filter('post_list_rows'")
+    && str_contains($admin, "admin/themes/edit"),
+    'article, page, and Theme Template dashboards use the current writing locale');
+$check(str_contains($admin, "add_filter('admin_category_list_rows'")
+    && str_contains($admin, "add_action('admin_category_row_actions'")
+    && str_contains($admin, "add_action('admin_category_before_purge_commit'")
+    && str_contains($admin, 'ct_get_published_category_translation')
+    && str_contains($admin, 'ct_category_url'),
+    'Content Translation adapts optional category labels, actions, URLs, and cleanup through Core hooks');
+$check(str_contains($helpers, 'ct_category_translation_slug_conflict')
+    && str_contains($helpers, 'ct_assert_category_translation_paths_unique')
+    && str_contains((string)file_get_contents($root . '/admin/category-edit.php'), 'authorization_lock_actor_permissions')
+    && str_contains($admin, "add_action('admin_category_before_edit_commit'")
+    && str_contains($admin, "add_action('admin_category_before_restore_commit'"),
+    'category translation saves and hierarchy changes reject ambiguous sibling slugs under ordered locks');
+$check(str_contains($admin, "'admin/pages/add', 'admin/pages/edit'")
+    && str_contains($admin, "FROM category_translations")
+    && str_contains($admin, "status = 'published'")
+    && str_contains($admin, 'input[name="categories[]"]'),
+    'post editors overlay published category labels for the current writing locale');
 $check(str_contains($frontend, 'ct_source_post_is_public')
     && str_contains($frontend, "add_filter('sitemap_query_clauses'")
     && !str_contains($frontend, '$.content_translation.authoring_locale')
@@ -94,7 +132,9 @@ $check(str_contains($helpers, 'ct_recompute_post_effective_status')
     && str_contains($helpers, "DELETE FROM post_translations")
     && str_contains($helpers, 'Post visibility could not be updated.'), 'translation saves and deletes recompute aggregate visibility');
 $check(str_contains($plugin, "['disable', 'delete']")
-    && str_contains($plugin, "'ct_post_workflows'"), 'active workflows block unsafe lifecycle changes and are plugin-owned');
+    && str_contains($plugin, "'ct_post_workflows'")
+    && str_contains($plugin, "p.type IN ('article', 'page')"),
+    'article and page workflows block unsafe lifecycle changes and restore source status on uninstall');
 
 $check(ct_author_default_locale($pdo, 7) === 'id'
     && ct_author_default_locale($pdo, 8) === 'en'
@@ -110,6 +150,7 @@ $check(ct_post_source_status($pdo, $post) === 'draft'
 $check(ct_translation_slug_lock_name('en', 'example') === ct_translation_slug_lock_name('en', 'example')
     && ct_translation_slug_lock_name('en', 'example') !== ct_translation_slug_lock_name('id', 'example'), 'translation slug locks remain locale-specific');
 
+$authorLanguageSettings['content_translation_author_locales'] = json_encode(['7' => 'id']);
 $_SESSION['user_id'] = 7;
 $GLOBALS['pdo'] = $pdo;
 $_GET = ['page' => 'admin/posts/add'];
@@ -121,7 +162,12 @@ if (is_callable($footer)) {
     $footer();
 }
 $noticeOutput = (string)ob_get_clean();
-$check(substr_count($noticeOutput, 'ct-author-language-notice') === 1, 'Add Post identifies the assigned ID writing language once');
+$check(substr_count($noticeOutput, 'ct-author-language-notice') === 1,
+    'Add Post identifies the assigned ID writing language once');
+$check(str_contains($noticeOutput, 'Berita'),
+    'Add Post exposes the published ID category label');
+$check(!str_contains($noticeOutput, 'Draf Tersembunyi'),
+    'Add Post excludes draft ID category labels');
 
 if ($failures !== []) {
     fwrite(STDERR, implode('; ', $failures) . PHP_EOL);

@@ -6,20 +6,22 @@ declare(strict_types=1);
 // ─── Ensure schema exists when in admin ───
 add_action('admin_init', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
-    if (!$pdo instanceof PDO || !ct_user_can_workspace($pdo)) return;
+    if (!$pdo instanceof PDO) return;
     ct_ensure_schema($pdo);
+    if (!ct_user_can_workspace($pdo)) return;
     ct_seed_shortcode_preset_ui_translations($pdo);
 
     $page = trim((string)($_GET['page'] ?? ''), '/');
     $types = [
         'admin/posts/edit' => 'article',
         'admin/pages/edit' => 'page',
+        'admin/themes/edit' => 'theme',
     ];
     if (!isset($types[$page])) return;
 
     $postId = (int)($_GET['id'] ?? 0);
     if ($postId <= 0) return;
-    $stmt = $pdo->prepare('SELECT id, type, meta, status, created_by FROM posts WHERE id = ? AND type = ? AND is_deleted = 0 LIMIT 1');
+    $stmt = $pdo->prepare('SELECT id, type, content, meta, status, created_by FROM posts WHERE id = ? AND type = ? AND is_deleted = 0 LIMIT 1');
     $stmt->execute([$postId, $types[$page]]);
     $post = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$post || !ct_user_can_translate_post($pdo, $post, 'update')) return;
@@ -31,12 +33,18 @@ add_action('admin_init', function () {
     }
 
     $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
-    $defaultReturnTo = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/index' : 'admin/posts/index');
+    $defaultReturnTo = $base . '/?page=' . match ((string)$post['type']) {
+        'page' => 'admin/pages/index',
+        'theme' => 'admin/themes/index',
+        default => 'admin/posts/index',
+    };
     $returnTo = function_exists('adiwira_safe_return_to')
         ? adiwira_safe_return_to($_GET['return_to'] ?? null, $defaultReturnTo)
         : $defaultReturnTo;
+    $packageComposed = $post['type'] === 'theme'
+        && ct_parse_theme_section_composition((string)($post['content'] ?? '')) !== null;
     $target = $base . '/?' . http_build_query([
-        'page' => 'admin/tools/content-translation/edit',
+        'page' => 'admin/tools/content-translation/' . ($packageComposed ? 'theme-section-edit' : 'edit'),
         'post_id' => $postId,
         'locale' => $locale,
         'return_to' => $returnTo,
@@ -48,7 +56,7 @@ add_action('admin_init', function () {
 if (!function_exists('ct_create_authored_post_workflow')) {
     function ct_create_authored_post_workflow(int $postId, PDO $pdo): void {
         if ($postId <= 0 || ct_post_workflow($pdo, $postId) !== null) return;
-        $stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by FROM posts WHERE id = ? AND type = 'article' AND is_deleted = 0 LIMIT 1 FOR UPDATE");
+        $stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by FROM posts WHERE id = ? AND type IN ('article', 'page') AND is_deleted = 0 LIMIT 1 FOR UPDATE");
         $stmt->execute([$postId]);
         $post = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$post) throw new RuntimeException('Authored post is unavailable.');
@@ -123,12 +131,30 @@ add_action('admin_post_before_add_commit', function ($postId, $pdo): void {
     ct_create_authored_post_workflow((int)$postId, $pdo);
 }, 10, 2);
 
+add_action('admin_page_before_add_commit', function ($postId, $pdo): void {
+    if (!$pdo instanceof PDO) return;
+    ct_create_authored_post_workflow((int)$postId, $pdo);
+}, 10, 2);
+
 add_action('admin_post_before_edit_commit', function ($postId, $pdo, $input): void {
     if (!$pdo instanceof PDO || !is_array($input)) return;
     ct_update_authored_post_source((int)$postId, $pdo, $input);
 }, 10, 3);
 
+add_action('admin_page_before_edit_commit', function ($postId, $pdo, $input): void {
+    if (!$pdo instanceof PDO || !is_array($input)) return;
+    ct_update_authored_post_source((int)$postId, $pdo, $input);
+}, 10, 3);
+
 add_action('admin_post_after_add', function ($postId, $pdo): void {
+    $lockName = $GLOBALS['_ct_authored_slug_locks'][(int)$postId] ?? null;
+    unset($GLOBALS['_ct_authored_slug_locks'][(int)$postId]);
+    if (!$pdo instanceof PDO || !is_string($lockName) || $lockName === '') return;
+    $release = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+    $release->execute([$lockName]);
+}, 1, 2);
+
+add_action('admin_page_after_add', function ($postId, $pdo): void {
     $lockName = $GLOBALS['_ct_authored_slug_locks'][(int)$postId] ?? null;
     unset($GLOBALS['_ct_authored_slug_locks'][(int)$postId]);
     if (!$pdo instanceof PDO || !is_string($lockName) || $lockName === '') return;
@@ -142,13 +168,19 @@ add_filter('admin_post_editor_status', function ($status, $post, $pdo) {
     return $workflow ? (string)$workflow['source_status'] : $status;
 }, 10, 3);
 
+add_filter('admin_page_editor_status', function ($status, $post, $pdo) {
+    if (!$pdo instanceof PDO || !is_array($post)) return $status;
+    $workflow = ct_post_workflow($pdo, (int)($post['id'] ?? 0));
+    return $workflow ? (string)$workflow['source_status'] : $status;
+}, 10, 3);
+
 add_filter('site_settings_validation_errors', function ($errors, $pdo, $input, $context) {
     if (!is_array($errors) || !$pdo instanceof PDO || !is_array($context)) return $errors;
     $current = function_exists('content_default_locale') ? content_default_locale() : 'en';
     $requested = trim((string)($context['content_default_language'] ?? $current));
     if ($requested === '' || $requested === $current) return $errors;
     if (ct_post_authoring_locales_in_use($pdo) !== []) {
-        $errors[] = __('Content default language cannot change while localized article workflows exist.');
+        $errors[] = __('Content default language cannot change while localized content workflows exist.');
     }
     return $errors;
 }, 10, 4);
@@ -162,49 +194,152 @@ add_action('admin_posts_bulk_before_mutation', function ($action, $posts, $pdo):
     }
 }, 10, 3);
 
+add_action('admin_pages_bulk_before_mutation', function ($action, $posts, $pdo): void {
+    if (!$pdo instanceof PDO || !is_array($posts) || !in_array($action, ['change_status', 'change_author'], true)) return;
+    foreach ($posts as $post) {
+        if (is_array($post) && ct_post_workflow($pdo, (int)($post['id'] ?? 0)) !== null) {
+            throw new RuntimeException('Localized workflow status and ownership must be changed in its language editor.');
+        }
+    }
+}, 10, 3);
+
+add_filter('admin_category_list_rows', function ($categories, $context, $pdo) {
+    if (!is_array($categories) || !$pdo instanceof PDO) return $categories;
+    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+    if ($locale === $default) return $categories;
+
+    foreach ($categories as &$category) {
+        if (!is_array($category)) continue;
+        $translation = ct_get_published_category_translation($pdo, (int)($category['id'] ?? 0), $locale);
+        if (!$translation) continue;
+        foreach (['name', 'description'] as $field) {
+            if (trim((string)($translation[$field] ?? '')) !== '') $category[$field] = (string)$translation[$field];
+        }
+        $url = ct_category_url($pdo, $category, $locale);
+        if (is_string($url) && $url !== '') $category['display_url'] = $url;
+    }
+    unset($category);
+    return $categories;
+}, 10, 3);
+
+add_action('admin_category_row_actions', function ($category, $context, $pdo): void {
+    if (!is_array($category) || !is_array($context) || !$pdo instanceof PDO
+        || empty($context['can_update']) || !ct_user_can_workspace($pdo)) return;
+    $locales = ct_enabled_locales($pdo);
+    if ($locales === []) return;
+
+    $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
+    echo '<select aria-label="' . htmlspecialchars(__('Translations'), ENT_QUOTES) . '" onchange="if(this.value)window.location.href=this.value" style="font-size:11px;padding:1px 4px;">';
+    echo '<option value="">' . htmlspecialchars(__('Translations'), ENT_QUOTES) . '</option>';
+    foreach ($locales as $locale) {
+        $translation = ct_get_category_translation($pdo, (int)$category['id'], $locale);
+        $url = $base . '/?' . http_build_query([
+            'page' => 'admin/tools/content-translation/category-edit',
+            'category_id' => (int)$category['id'],
+            'locale' => $locale,
+            'return_to' => (string)($context['return_to'] ?? ''),
+        ]);
+        $label = strtoupper($locale) . ' - ' . ($translation ? __('Edit') : __('Add'));
+        echo '<option value="' . htmlspecialchars($url, ENT_QUOTES) . '">' . htmlspecialchars($label, ENT_QUOTES) . '</option>';
+    }
+    echo '</select>';
+}, 10, 3);
+
+add_action('admin_category_before_edit_commit', function ($categoryId, $pdo): void {
+    if (!$pdo instanceof PDO || (int)$categoryId <= 0) return;
+    ct_assert_category_translation_paths_unique($pdo, (int)$categoryId);
+}, 10, 2);
+
+add_action('admin_category_before_restore_commit', function ($categoryId, $pdo): void {
+    if (!$pdo instanceof PDO || (int)$categoryId <= 0) return;
+    ct_assert_category_translation_paths_unique($pdo, (int)$categoryId);
+}, 10, 2);
+
+add_action('admin_category_before_purge_commit', function ($categoryId, $category, $pdo): void {
+    if (!$pdo instanceof PDO || (int)$categoryId <= 0) return;
+    $stmt = $pdo->prepare('DELETE FROM category_translations WHERE category_id = ?');
+    if (!$stmt->execute([(int)$categoryId])) throw new RuntimeException('Category translation cleanup failed.');
+}, 10, 3);
+
 add_action('admin_footer', function (): void {
     static $rendered = false;
     if ($rendered) return;
 
     $page = trim((string)($_GET['page'] ?? ''), '/');
-    if ($page !== 'admin/posts/add') return;
+    if (!in_array($page, ['admin/posts/add', 'admin/posts/edit', 'admin/pages/add', 'admin/pages/edit'], true)) return;
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return;
     $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
-    $formId = 'post-add-form';
     $locale = ct_author_default_locale($pdo, ct_current_user_id());
     if (!is_string($locale) || $locale === '' || $locale === $default) return;
     $rendered = true;
 
-    $title = __('Writing language') . ': ' . strtoupper($locale);
+    $categoryStmt = $pdo->prepare("SELECT category_id, name FROM category_translations
+        WHERE locale = ? AND status = 'published' AND TRIM(name) <> ''");
+    $categoryStmt->execute([$locale]);
+    $categoryNames = [];
+    foreach ($categoryStmt->fetchAll(PDO::FETCH_ASSOC) as $category) {
+        $categoryId = (int)($category['category_id'] ?? 0);
+        if ($categoryId > 0) $categoryNames[(string)$categoryId] = (string)$category['name'];
+    }
+
+    $notice = null;
+    if (in_array($page, ['admin/posts/add', 'admin/pages/add'], true)) {
+        $contentType = $page === 'admin/pages/add' ? __('page') : __('article');
+        $notice = [
+            'title' => __('Writing language') . ': ' . strtoupper($locale),
+            'message' => sprintf(
+                __('This %s will be saved for /%s/. The site default language remains %s.'),
+                $contentType,
+                $locale,
+                strtoupper($default)
+            ),
+            'form_id' => $page === 'admin/pages/add' ? 'page-add-form' : 'post-add-form',
+        ];
+    }
+    echo '<script>(function(){var names=' . json_encode($categoryNames, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';document.querySelectorAll(\'input[name="categories[]"]\').forEach(function(input){var name=names[String(input.value)];if(!name)return;var node=input.nextSibling;while(node&&node.nodeType!==3)node=node.nextSibling;if(node)node.nodeValue=" "+name;else input.parentNode.appendChild(document.createTextNode(" "+name))});var noticeData=' . json_encode($notice, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';if(!noticeData)return;var form=document.getElementById(noticeData.form_id);if(!form)return;var notice=document.createElement("div");notice.className="ct-author-language-notice";var strong=document.createElement("strong");strong.textContent=noticeData.title;var span=document.createElement("span");span.textContent=noticeData.message;notice.append(strong,span);form.prepend(notice)})()</script>';
+});
+
+add_action('admin_footer', function (): void {
+    $page = trim((string)($_GET['page'] ?? ''), '/');
+    if (!in_array($page, ['admin/categories/add', 'admin/categories/edit'], true)) return;
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo instanceof PDO) return;
+    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+    if ($locale === $default) return;
+
     $message = sprintf(
-        __('This article will be saved for /%s/. The site default language remains %s.'),
-        $locale,
+        __('Categories are shared across all content languages. This Core editor manages the canonical %s category; localized labels are managed separately.'),
         strtoupper($default)
     );
-    echo '<script>(function(){var form=document.getElementById(' . json_encode($formId) . ');if(!form)return;var notice=document.createElement("div");notice.className="ct-author-language-notice";notice.innerHTML="<strong>"+' . json_encode($title, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '+"</strong><span>"+' . json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '+"</span>";form.prepend(notice)})()</script>';
+    $formId = $page === 'admin/categories/add' ? 'category-add-form' : 'category-edit-form';
+    echo '<script>(function(){var form=document.getElementById(' . json_encode($formId) . ');if(!form)return;var notice=document.createElement("div");notice.className="ct-author-language-notice";notice.textContent=' . json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';form.prepend(notice)})()</script>';
 });
 
 // Show each dashboard user the published representation for their configured
 // writing locale while retaining Core's source row as the fallback.
-add_filter('post_list_join', function (string $join): string {
+add_filter('post_list_join', function (string $join, $where = '', $context = []): string {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $join;
     $locale = ct_author_default_locale($pdo, ct_current_user_id());
     $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
     $localeSql = $pdo->quote($locale);
     $translationCondition = $locale === $default ? ' AND 1 = 0' : '';
+    $slugCondition = is_array($context) && ($context['type'] ?? '') === 'theme'
+        ? ''
+        : "\n        AND TRIM(ct_post_list_display.slug) <> ''";
 
     return $join . " LEFT JOIN ct_post_workflows ct_post_list_workflow
         ON ct_post_list_workflow.post_id = p.id
         LEFT JOIN post_translations ct_post_list_display
         ON ct_post_list_display.post_id = p.id
         AND ct_post_list_display.locale = {$localeSql}
-        AND TRIM(ct_post_list_display.title) <> ''
-        AND TRIM(ct_post_list_display.slug) <> ''{$translationCondition}";
-});
+        AND TRIM(ct_post_list_display.title) <> ''{$slugCondition}{$translationCondition}";
+}, 10, 3);
 
-add_filter('post_list_select', function (string $select): string {
+add_filter('post_list_select', function (string $select, $where = '', $context = []): string {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $select;
     $locale = ct_author_default_locale($pdo, ct_current_user_id());
@@ -220,7 +355,26 @@ add_filter('post_list_select', function (string $select): string {
         END AS status,
         CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN {$localeSql} ELSE NULL END AS ct_locale,
         CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE NULL END AS ct_translated_slug";
-});
+}, 10, 3);
+
+add_filter('post_list_rows', function ($rows, $context) {
+    if (!is_array($rows) || !is_array($context) || ($context['type'] ?? '') !== 'theme') return $rows;
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo instanceof PDO) return $rows;
+
+    foreach ($rows as &$row) {
+        if (!is_array($row)) continue;
+        $locale = trim((string)($row['ct_locale'] ?? ''));
+        $slug = trim((string)($row['ct_translated_slug'] ?? ''));
+        if ($locale === '') continue;
+        $translation = ct_get_public_post_translation($pdo, (int)($row['id'] ?? 0), $locale);
+        if (!$translation || (string)($translation['slug'] ?? '') !== $slug) continue;
+        $row['public_path'] = $slug === '' ? $locale : $locale . '/' . trim($slug, '/');
+        $row['display_permalink'] = ct_post_url($slug, $locale);
+    }
+    unset($row);
+    return $rows;
+}, 10, 2);
 
 add_action('site_settings_after_general', function ($pdo) {
     if (!$pdo instanceof PDO || !ct_user_can_workspace($pdo)
@@ -241,7 +395,7 @@ add_action('site_settings_after_general', function ($pdo) {
     echo '</div><script>(function(){var box=document.getElementById(' . json_encode($id) . ');if(!box)return;var select=box.querySelector(".ct-site-identity-locale");select.addEventListener("change",function(){box.querySelectorAll("[data-ct-site-locale]").forEach(function(field){field.style.display=field.dataset.ctSiteLocale===select.value?"block":"none"})})})()</script>';
 }, 10, 1);
 
-add_filter('post_list_status_expression', function ($expression) {
+add_filter('post_list_status_expression', function ($expression, $context = []) {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $expression;
     $localeSql = $pdo->quote(ct_author_default_locale($pdo, ct_current_user_id()));
@@ -250,14 +404,14 @@ add_filter('post_list_status_expression', function ($expression) {
         WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.status
         ELSE p.status
     END";
-}, 10, 1);
+}, 10, 2);
 
-add_filter('post_list_search_condition', function ($condition) {
+add_filter('post_list_search_condition', function ($condition, $context = []) {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $condition;
     return '(CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.title ELSE p.title END LIKE :search
         OR CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE p.slug END LIKE :search)';
-}, 10, 1);
+}, 10, 2);
 
 add_action('site_settings_after_save', function ($pdo, $input) {
     if (!$pdo instanceof PDO || !is_array($input) || !ct_user_can_workspace($pdo)
