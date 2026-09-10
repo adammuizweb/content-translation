@@ -355,7 +355,7 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
     if (!ct_user_can_workspace($pdo)) return;
     $mediaId = (int)($row['id'] ?? 0);
     $profile = $mediaId > 0 ? ct_media_profile($pdo, $mediaId) : null;
-    $sourceLocale = (string)($profile['metadata_source_locale'] ?? $context['content_locale'] ?? content_default_locale());
+    $sourceLocale = (string)($profile['metadata_source_locale'] ?? content_default_locale());
     if (!ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $sourceLocale)) return;
     $policy = (string)($profile['availability_policy'] ?? 'all');
     $selected = $mediaId > 0 ? ct_media_available_locales($pdo, $mediaId) : [];
@@ -391,7 +391,7 @@ add_action('media_admin_detail_before_fields', function (array $row, array $data
 add_action('media_admin_detail_after_fields', function (array $row, array $data, array $context, PDO $pdo): void {
     if (!ct_user_can_workspace($pdo)) return;
     $profile = ct_media_profile($pdo, (int)$row['id']);
-    $sourceLocale = (string)($profile['metadata_source_locale'] ?? $context['content_locale'] ?? content_default_locale());
+    $sourceLocale = (string)($profile['metadata_source_locale'] ?? content_default_locale());
     $editableLocales = array_values(array_filter(ct_content_locales($pdo), fn(string $locale): bool => $locale !== $sourceLocale && ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $locale)));
     $translationMap = [$sourceLocale => [
         'title' => (string)($row['title'] ?? ''), 'caption' => (string)($row['caption'] ?? ''),

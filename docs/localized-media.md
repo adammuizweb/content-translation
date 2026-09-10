@@ -6,6 +6,7 @@ Localized media is available in Content Translation 1.14.0 and requires Jyavani 
 
 - Core `media.title`, `alt`, `caption`, and `credit` remain the asset's original metadata. They are not assumed to be English or the site default language.
 - `metadata_source_locale` records the language in which that original metadata was authored, independent of the site default language.
+- New media profiles default their original metadata language to Core's Content Default Language; a picker opened for another locale uses that locale only as the active metadata view.
 - Availability is either `all` locales or an explicit non-empty locale set.
 - The all-locales policy displays every locale checked and disabled to reflect effective availability. Choosing selected locales enables the controls for an explicit subset.
 - Alternate metadata is reviewed independently as draft or published and is overlaid only when its source fingerprint is current.

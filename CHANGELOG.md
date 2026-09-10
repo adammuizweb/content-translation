@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.14.3 - 2026-09-10
+
+- Default unprofiled media to Core's Content Default Language while retaining the picker locale only as the active metadata view.
+
 ## 1.14.2 - 2026-09-10
 
 - Represent all-locale media availability with checked disabled controls while keeping explicit locale subsets editable.

@@ -98,6 +98,10 @@ $check(str_contains($files['media'], 'ct-media-metadata-slot')
     && str_contains($files['media'], 'input.disabled=all')
     && str_contains($files['media'], 'input.checked=all||selected.has(input.value)'),
     'media details share one locale-switched metadata form and represent all-locale availability as checked disabled controls');
+$check(substr_count($files['media'], "\$profile['metadata_source_locale'] ?? content_default_locale()") === 2
+    && !str_contains($files['media'], "\$profile['metadata_source_locale'] ?? \$context['content_locale']")
+    && str_contains($files['media'], "\$target = trim((string)(\$context['content_locale'] ?? ''))"),
+    'new media profiles derive their source from Content Default Language while picker context selects only the active metadata view');
 $check(str_contains($files['helpers'], 'ct_translation_editor_state($current, $currentFeatured)')
     && str_contains($files['helpers'], 'ct_save_featured_selection')
     && strpos($files['helpers'], 'ct_save_featured_selection') < strpos($files['helpers'], 'if ($ownsTransaction) $pdo->commit()', strpos($files['helpers'], 'function ct_save_translation_locked')),
