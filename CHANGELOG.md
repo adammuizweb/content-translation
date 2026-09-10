@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.14.2 - 2026-09-10
+
+- Represent all-locale media availability with checked disabled controls while keeping explicit locale subsets editable.
+- Preview inherited source thumbnails in translated content without emitting empty image requests.
+- Keep translated slug fields valid under current browser regular-expression semantics.
+
 ## 1.14.1 - 2026-09-10
 
 - Keep selected media-availability locales persisted by switching the policy automatically when locale checkboxes are used.

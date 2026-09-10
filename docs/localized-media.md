@@ -7,7 +7,7 @@ Localized media is available in Content Translation 1.14.0 and requires Jyavani 
 - Core `media.title`, `alt`, `caption`, and `credit` remain the asset's original metadata. They are not assumed to be English or the site default language.
 - `metadata_source_locale` records the language in which that original metadata was authored, independent of the site default language.
 - Availability is either `all` locales or an explicit non-empty locale set.
-- Checking an individual locale in the media editor selects the explicit-locale policy automatically, so the visible checks and persisted policy cannot silently disagree.
+- The all-locales policy displays every locale checked and disabled to reflect effective availability. Choosing selected locales enables the controls for an explicit subset.
 - Alternate metadata is reviewed independently as draft or published and is overlaid only when its source fingerprint is current.
 - Profile availability and each locale translation carry optimistic editor tokens. Saves lock those rows and reject stale submissions.
 - Reclassifying the source language requires grants for both the old and new source locale. A locale with an existing translation cannot become the source until that translation is deleted in a separate save.

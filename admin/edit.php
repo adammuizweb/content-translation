@@ -75,13 +75,24 @@ $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['s
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
 $coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit' : ($post['type'] === 'theme' ? 'admin/themes/edit' : 'admin/posts/edit')) . '&id=' . $postId;
 $supportsFeatured = $localizedMediaSupported && !$isSource && in_array($post['type'], ['article', 'page'], true);
+$mediaConsumer = $post['type'] === 'page' ? 'page' : 'post';
 $featuredSelection = $supportsFeatured ? ct_featured_selection($pdo, $postId, $locale) : null;
 $featuredMode = (string)($featuredSelection['mode'] ?? 'inherit');
 $featuredId = (int)($featuredSelection['media_id'] ?? 0);
 $featuredRow = $featuredId > 0 && function_exists('media_load_live') ? media_load_live($pdo, $featuredId) : null;
-$featuredUrl = $featuredRow && function_exists('media_client_url') ? media_client_url($featuredRow, true) : null;
+$selectedFeaturedUrl = $featuredRow && function_exists('media_client_url') ? media_client_url($featuredRow, true) : null;
+$sourceFeatured = $supportsFeatured && function_exists('media_resolve_featured') ? media_resolve_featured($pdo, $post, [
+    'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
+    'field' => 'featured', 'content_locale' => $sourceLocale,
+]) : null;
+$sourcePreviewPost = $post;
+$sourcePreviewPost['display_image'] = is_array($sourceFeatured) ? (string)($sourceFeatured['url'] ?? '') : null;
+$inheritedFeaturedUrl = $supportsFeatured && function_exists('media_post_display_url') ? media_post_display_url($sourcePreviewPost) : null;
+$featuredUrl = $featuredMode === 'media' ? $selectedFeaturedUrl : ($featuredMode === 'inherit' ? $inheritedFeaturedUrl : null);
+$featuredLabel = $featuredMode === 'media' && $featuredRow
+    ? (string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '')
+    : ($featuredMode === 'inherit' && $featuredUrl ? __('Source thumbnail') : '');
 $featuredCompatible = $featuredMode !== 'media' || ($featuredRow && media_client_url($featuredRow, false) !== null && ct_media_is_available($pdo, $featuredId, $locale));
-$mediaConsumer = $post['type'] === 'page' ? 'page' : 'post';
 $pickerBaseUrl = $localizedMediaSupported ? $base . '/admin/modal_img/index.php?embedded=1' : '';
 $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_query([
     'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
@@ -133,7 +144,7 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
         </div>
         <div class="ct-field">
           <label for="ct-slug"><?= __('Slug') ?> <small class="muted">(<?= __('leave empty to generate from translated title') ?>)</small></label>
-          <input type="text" id="ct-slug" name="slug" value="<?= h((string)$translation['slug']) ?>" maxlength="255" pattern="[a-zA-Z0-9_\-/]*">
+          <input type="text" id="ct-slug" name="slug" value="<?= h((string)$translation['slug']) ?>" maxlength="255" pattern="[a-zA-Z0-9_\/\-]*">
         </div>
         <div class="ct-field">
           <label for="ct-meta-description"><?= __('Meta description') ?></label>
@@ -155,8 +166,8 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
           <label><input type="radio" name="featured_mode" value="none"<?= $featuredMode === 'none' ? ' checked' : '' ?>> <?= __('No thumbnail') ?></label>
           <input type="hidden" id="ct-featured-media-id" name="featured_media_id" value="<?= $featuredId ?: '' ?>">
           <div class="ct-featured-preview" id="ct-featured-preview"<?= $featuredUrl ? '' : ' hidden' ?>>
-            <img src="<?= h((string)$featuredUrl) ?>" alt="">
-            <span><?= $featuredRow ? h((string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '')) : '' ?></span>
+            <?php if ($featuredUrl): ?><img src="<?= h($featuredUrl) ?>" alt=""><?php endif; ?>
+            <span><?= h($featuredLabel) ?></span>
           </div>
           <button type="button" class="btn" id="ct-featured-choose"><?= __('Open media picker') ?></button>
           <p id="ct-featured-warning" class="ct-featured-warning"<?= $featuredCompatible ? ' hidden' : '' ?>><?= __('This media is unavailable, private, or deleted for the selected locale. It may remain in a draft but cannot be published.') ?></p>
@@ -227,6 +238,8 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
   let codeMirror = null;
   const pickerContext = <?= json_encode(['consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  const inheritedFeaturedPreview = <?= json_encode(['url' => $inheritedFeaturedUrl, 'label' => $inheritedFeaturedUrl ? __('Source thumbnail') : ''], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  let selectedFeaturedPreview = <?= json_encode(['url' => $selectedFeaturedUrl, 'label' => $featuredRow ? (string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '') : '', 'compatible' => $featuredCompatible], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const fullToolbar = [
     [{ header: [1, 2, 3, 4, 5, 6, false] }],
     ['bold', 'italic', 'underline', 'strike'],
@@ -303,6 +316,29 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
     return quill ? quill.root.innerHTML : '';
   }
 
+  function renderFeaturedPreview() {
+    const preview = document.getElementById('ct-featured-preview');
+    if (!preview) return;
+    const mode = form.querySelector('[name="featured_mode"]:checked')?.value || 'inherit';
+    const state = mode === 'inherit' ? inheritedFeaturedPreview : (mode === 'media' ? selectedFeaturedPreview : null);
+    let image = preview.querySelector('img');
+    if (!state || !state.url) {
+      if (image) image.removeAttribute('src');
+      preview.hidden = true;
+    } else {
+      if (!image) {
+        image = document.createElement('img');
+        image.alt = '';
+        preview.prepend(image);
+      }
+      image.src = state.url;
+      preview.querySelector('span').textContent = state.label || '';
+      preview.hidden = false;
+    }
+    const warning = document.getElementById('ct-featured-warning');
+    if (warning) warning.hidden = mode !== 'media' || selectedFeaturedPreview.compatible !== false;
+  }
+
   function selectFeatured(detail) {
     if (!detail || !detail.id || !detail.context || !form.elements.featured_media_id) return;
     const context = detail.context;
@@ -310,13 +346,16 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
         || context.field !== pickerContext.field || context.content_locale !== pickerContext.content_locale) return;
     form.elements.featured_media_id.value = String(detail.id);
     form.querySelector('[name="featured_mode"][value="media"]').checked = true;
-    const preview = document.getElementById('ct-featured-preview');
-    preview.querySelector('img').src = detail.protected_url || detail.url || '';
-    preview.querySelector('span').textContent = detail.filename || detail.title || ('Media #' + detail.id);
-    preview.hidden = false;
     const localeAvailable = detail.extensions?.content_translation?.available !== false;
-    document.getElementById('ct-featured-warning').hidden = localeAvailable && detail.visibility === 'public' && detail.storage_disk === 'public' && detail.access_scope === 'public';
+    selectedFeaturedPreview = {
+      url: detail.protected_url || detail.url || '',
+      label: detail.filename || detail.title || ('Media #' + detail.id),
+      compatible: localeAvailable && detail.visibility === 'public' && detail.storage_disk === 'public' && detail.access_scope === 'public'
+    };
+    renderFeaturedPreview();
   }
+  form.querySelectorAll('[name="featured_mode"]').forEach(function(input){ input.addEventListener('change', renderFeaturedPreview); });
+  renderFeaturedPreview();
   document.getElementById('ct-featured-choose')?.addEventListener('click', function(){
     const url = <?= json_encode($pickerUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     if (typeof window.openMediaSelector !== 'function') return;

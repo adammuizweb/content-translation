@@ -85,7 +85,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
       <h3><?= __('Page metadata') ?></h3>
       <div class="ct-package-fields">
         <div class="ct-field"><label for="ct-title"><?= __('Translated title') ?></label><input id="ct-title" name="title" maxlength="255" value="<?= h((string)$translation['title']) ?>"></div>
-        <div class="ct-field"><label for="ct-slug"><?= __('Translated slug') ?><?php if ($isHomepage): ?> <small class="muted"><?= __('Homepage may remain empty') ?></small><?php endif; ?></label><input id="ct-slug" name="slug" maxlength="255" pattern="[a-zA-Z0-9_\-/]*" value="<?= h((string)$translation['slug']) ?>"></div>
+        <div class="ct-field"><label for="ct-slug"><?= __('Translated slug') ?><?php if ($isHomepage): ?> <small class="muted"><?= __('Homepage may remain empty') ?></small><?php endif; ?></label><input id="ct-slug" name="slug" maxlength="255" pattern="[a-zA-Z0-9_\/\-]*" value="<?= h((string)$translation['slug']) ?>"></div>
         <div class="ct-field ct-package-field-wide"><label for="ct-meta"><?= __('Meta description') ?></label><textarea id="ct-meta" name="meta_description" rows="3" maxlength="320"><?= h((string)$translation['meta_description']) ?></textarea></div>
         <div class="ct-field"><label for="ct-status"><?= __('Status') ?></label><select id="ct-status" name="status"><option value="draft"<?= ($translation['status'] ?? '') === 'draft' ? ' selected' : '' ?>><?= __('Draft') ?></option><option value="published"<?= ($translation['status'] ?? '') === 'published' ? ' selected' : '' ?>><?= __('Published') ?></option></select></div>
       </div>

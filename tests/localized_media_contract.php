@@ -8,6 +8,7 @@ $files = [
     'media' => (string)file_get_contents($root . '/includes/media.php'),
     'admin' => (string)file_get_contents($root . '/includes/admin.php'),
     'editor' => (string)file_get_contents($root . '/admin/edit.php'),
+    'theme_editor' => (string)file_get_contents($root . '/admin/theme-section-edit.php'),
     'save' => (string)file_get_contents($root . '/admin/api/save.php'),
     'delete' => (string)file_get_contents($root . '/admin/api/delete.php'),
     'migration' => (string)file_get_contents($root . '/migrations/0004-localized-media.php'),
@@ -73,6 +74,16 @@ $check(str_contains($files['editor'], 'media_picker_query')
 $check(str_contains($files['editor'], "\$post['type'] === 'page' ? 'page' : 'post'")
     && str_contains($files['editor'], 'detail.extensions?.content_translation?.available'),
     'picker validates page/post consumers and immediately consumes locale availability diagnostics');
+$check(str_contains($files['editor'], 'media_resolve_featured')
+    && str_contains($files['editor'], 'media_post_display_url')
+    && str_contains($files['editor'], '<?php if ($featuredUrl): ?>')
+    && str_contains($files['editor'], 'renderFeaturedPreview')
+    && str_contains($files['editor'], "image.removeAttribute('src')"),
+    'translation editor previews inherited source media without emitting an empty image URL');
+$check(str_contains($files['editor'], 'pattern="[a-zA-Z0-9_\\/\\-]*"')
+    && str_contains($files['theme_editor'], 'pattern="[a-zA-Z0-9_\\/\\-]*"')
+    && !str_contains($files['editor'] . $files['theme_editor'], 'pattern="[a-zA-Z0-9_\\-/]*"'),
+    'translation slug patterns remain valid under browser RegExp v semantics');
 $check(str_contains($files['editor'], '/admin/modal_img/index.php?embedded=1')
     && str_contains((string)file_get_contents($root . '/plugin.json'), '"media-selector"')
     && !str_contains($files['editor'], '/static/js/add/media-selector.js')
@@ -83,8 +94,10 @@ $check(str_contains($files['editor'], '/admin/modal_img/index.php?embedded=1')
 $check(str_contains($files['media'], 'ct-media-metadata-slot')
     && str_contains($files['media'], 'form.addEventListener("formdata"')
     && str_contains($files['media'], 'slot.appendChild(wrap)')
-    && str_contains($files['media'], 'policy.value="selected"'),
-    'media details share one locale-switched metadata form and locale checks select the persisted availability policy');
+    && str_contains($files['media'], "\$policy === 'all' ? ' disabled' : ''")
+    && str_contains($files['media'], 'input.disabled=all')
+    && str_contains($files['media'], 'input.checked=all||selected.has(input.value)'),
+    'media details share one locale-switched metadata form and represent all-locale availability as checked disabled controls');
 $check(str_contains($files['helpers'], 'ct_translation_editor_state($current, $currentFeatured)')
     && str_contains($files['helpers'], 'ct_save_featured_selection')
     && strpos($files['helpers'], 'ct_save_featured_selection') < strpos($files['helpers'], 'if ($ownsTransaction) $pdo->commit()', strpos($files['helpers'], 'function ct_save_translation_locked')),

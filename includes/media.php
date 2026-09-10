@@ -366,9 +366,9 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
     foreach (ct_content_locales($pdo) as $locale) echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($sourceLocale === $locale ? ' selected' : '') . '>' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</option>';
     echo '</select></label>';
     echo '<label>' . htmlspecialchars(__('Availability'), ENT_QUOTES) . '<select id="' . $controlId . '-policy" name="media_extension[content-translation][availability_policy]"><option value="all"' . ($policy === 'all' ? ' selected' : '') . '>' . htmlspecialchars(__('All locales'), ENT_QUOTES) . '</option><option value="selected"' . ($policy === 'selected' ? ' selected' : '') . '>' . htmlspecialchars(__('Selected locales'), ENT_QUOTES) . '</option></select></label></div>';
-    echo '<p class="muted">' . htmlspecialchars(__('Choose which site languages may use this asset. Selecting a language automatically switches availability to selected locales.'), ENT_QUOTES) . '</p>';
+    echo '<p class="muted">' . htmlspecialchars(__('All locales keeps every language selected. Choose Selected locales to customize availability.'), ENT_QUOTES) . '</p>';
     echo '<div class="ct-media-locales" id="' . $controlId . '-locales">';
-    foreach (ct_content_locales($pdo) as $locale) echo '<label><input type="checkbox" name="media_extension[content-translation][available_locales][]" value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . (in_array($locale, $selected, true) ? ' checked' : '') . '> ' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</label>';
+    foreach (ct_content_locales($pdo) as $locale) echo '<label><input type="checkbox" name="media_extension[content-translation][available_locales][]" value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($policy === 'all' || in_array($locale, $selected, true) ? ' checked' : '') . ($policy === 'all' ? ' disabled' : '') . '> ' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</label>';
     echo '</div>';
     if ($mediaId > 0) {
         $editorLocales = array_values(array_filter(ct_content_locales($pdo), fn(string $locale): bool => $locale === $sourceLocale || ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $locale)));
@@ -383,7 +383,7 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
         echo '<div class="ct-media-metadata-slot" id="ct-media-translation-' . $mediaId . '-slot"></div>';
     }
     echo '</fieldset>';
-    echo '<script>(function(){var policy=document.getElementById(' . json_encode($controlId . '-policy') . '),box=document.getElementById(' . json_encode($controlId . '-locales') . ');if(!policy||!box)return;box.addEventListener("change",function(event){if(event.target&&event.target.matches("input[type=checkbox]"))policy.value="selected"});policy.addEventListener("change",function(){box.classList.toggle("is-muted",policy.value==="all")});box.classList.toggle("is-muted",policy.value==="all")})()</script>';
+    echo '<script>(function(){var policy=document.getElementById(' . json_encode($controlId . '-policy') . '),box=document.getElementById(' . json_encode($controlId . '-locales') . ');if(!policy||!box)return;var inputs=Array.from(box.querySelectorAll("input[type=checkbox]")),selected=new Set(inputs.filter(function(input){return input.checked}).map(function(input){return input.value}));function render(){var all=policy.value==="all";inputs.forEach(function(input){input.disabled=all;input.checked=all||selected.has(input.value)});box.classList.toggle("is-muted",all)}box.addEventListener("change",function(event){if(event.target&&event.target.matches("input[type=checkbox]")){if(event.target.checked)selected.add(event.target.value);else selected.delete(event.target.value)}});policy.addEventListener("change",function(){if(policy.value==="all")selected=new Set(inputs.filter(function(input){return input.checked}).map(function(input){return input.value}));render()});render()})()</script>';
 }
 
 add_action('media_admin_upload_fields', function (array $context, PDO $pdo): void { ct_render_media_profile_fields($context, $pdo); }, 10, 2);
