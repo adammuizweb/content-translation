@@ -73,6 +73,18 @@ $check(str_contains($files['editor'], 'media_picker_query')
 $check(str_contains($files['editor'], "\$post['type'] === 'page' ? 'page' : 'post'")
     && str_contains($files['editor'], 'detail.extensions?.content_translation?.available'),
     'picker validates page/post consumers and immediately consumes locale availability diagnostics');
+$check(str_contains($files['editor'], '/admin/modal_img/index.php?embedded=1')
+    && str_contains((string)file_get_contents($root . '/plugin.json'), '"media-selector"')
+    && !str_contains($files['editor'], '/static/js/add/media-selector.js')
+    && str_contains($files['editor'], "toolbar.addHandler('image'")
+    && str_contains($files['editor'], "[{ color: [] }, { background: [] }]")
+    && str_contains($files['editor'], "['link', 'image', 'video']"),
+    'translation editor uses the canonical modal route and a full Quill toolbar with media selection');
+$check(str_contains($files['media'], 'ct-media-metadata-slot')
+    && str_contains($files['media'], 'form.addEventListener("formdata"')
+    && str_contains($files['media'], 'slot.appendChild(wrap)')
+    && str_contains($files['media'], 'policy.value="selected"'),
+    'media details share one locale-switched metadata form and locale checks select the persisted availability policy');
 $check(str_contains($files['helpers'], 'ct_translation_editor_state($current, $currentFeatured)')
     && str_contains($files['helpers'], 'ct_save_featured_selection')
     && strpos($files['helpers'], 'ct_save_featured_selection') < strpos($files['helpers'], 'if ($ownsTransaction) $pdo->commit()', strpos($files['helpers'], 'function ct_save_translation_locked')),

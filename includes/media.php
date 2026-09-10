@@ -359,15 +359,31 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
     if (!ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $sourceLocale)) return;
     $policy = (string)($profile['availability_policy'] ?? 'all');
     $selected = $mediaId > 0 ? ct_media_available_locales($pdo, $mediaId) : [];
-    echo '<fieldset class="ct-media-fields"><legend>' . htmlspecialchars(__('Localized media'), ENT_QUOTES) . '</legend>';
+    $controlId = 'ct-media-profile-' . $mediaId;
+    echo '<fieldset class="ct-media-fields ct-media-localized-editor" id="' . $controlId . '"><legend>' . htmlspecialchars(__('Localized media'), ENT_QUOTES) . '</legend>';
     echo '<input type="hidden" name="media_extension[content-translation][profile_state]" value="' . ct_media_profile_state($profile, $selected) . '">';
-    echo '<label>' . htmlspecialchars(__('Original metadata language'), ENT_QUOTES) . '<select name="media_extension[content-translation][metadata_source_locale]">';
+    echo '<div class="ct-media-profile-grid"><label>' . htmlspecialchars(__('Original metadata language'), ENT_QUOTES) . '<select name="media_extension[content-translation][metadata_source_locale]">';
     foreach (ct_content_locales($pdo) as $locale) echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($sourceLocale === $locale ? ' selected' : '') . '>' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</option>';
-    echo '</select></label><p class="muted">' . htmlspecialchars(__('This is the language of the asset metadata, independent of the site default language.'), ENT_QUOTES) . '</p>';
-    echo '<label>' . htmlspecialchars(__('Availability'), ENT_QUOTES) . '<select name="media_extension[content-translation][availability_policy]"><option value="all"' . ($policy === 'all' ? ' selected' : '') . '>' . htmlspecialchars(__('All locales'), ENT_QUOTES) . '</option><option value="selected"' . ($policy === 'selected' ? ' selected' : '') . '>' . htmlspecialchars(__('Selected locales'), ENT_QUOTES) . '</option></select></label>';
-    echo '<div class="ct-media-locales">';
+    echo '</select></label>';
+    echo '<label>' . htmlspecialchars(__('Availability'), ENT_QUOTES) . '<select id="' . $controlId . '-policy" name="media_extension[content-translation][availability_policy]"><option value="all"' . ($policy === 'all' ? ' selected' : '') . '>' . htmlspecialchars(__('All locales'), ENT_QUOTES) . '</option><option value="selected"' . ($policy === 'selected' ? ' selected' : '') . '>' . htmlspecialchars(__('Selected locales'), ENT_QUOTES) . '</option></select></label></div>';
+    echo '<p class="muted">' . htmlspecialchars(__('Choose which site languages may use this asset. Selecting a language automatically switches availability to selected locales.'), ENT_QUOTES) . '</p>';
+    echo '<div class="ct-media-locales" id="' . $controlId . '-locales">';
     foreach (ct_content_locales($pdo) as $locale) echo '<label><input type="checkbox" name="media_extension[content-translation][available_locales][]" value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . (in_array($locale, $selected, true) ? ' checked' : '') . '> ' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</label>';
-    echo '</div></fieldset>';
+    echo '</div>';
+    if ($mediaId > 0) {
+        $editorLocales = array_values(array_filter(ct_content_locales($pdo), fn(string $locale): bool => $locale === $sourceLocale || ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $locale)));
+        $target = trim((string)($context['content_locale'] ?? ''));
+        if (!in_array($target, $editorLocales, true)) $target = $sourceLocale;
+        echo '<div class="ct-media-language-editor"><label>' . htmlspecialchars(__('Metadata language'), ENT_QUOTES) . '<select id="ct-media-translation-' . $mediaId . '-locale">';
+        foreach ($editorLocales as $locale) {
+            $label = strtoupper($locale) . ($locale === $sourceLocale ? ' (' . __('Original') . ')' : '');
+            echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($target === $locale ? ' selected' : '') . '>' . htmlspecialchars($label, ENT_QUOTES) . '</option>';
+        }
+        echo '</select></label><p class="muted">' . htmlspecialchars(__('The fields below show the selected language. Save before editing another translation.'), ENT_QUOTES) . '</p></div>';
+        echo '<div class="ct-media-metadata-slot" id="ct-media-translation-' . $mediaId . '-slot"></div>';
+    }
+    echo '</fieldset>';
+    echo '<script>(function(){var policy=document.getElementById(' . json_encode($controlId . '-policy') . '),box=document.getElementById(' . json_encode($controlId . '-locales') . ');if(!policy||!box)return;box.addEventListener("change",function(event){if(event.target&&event.target.matches("input[type=checkbox]"))policy.value="selected"});policy.addEventListener("change",function(){box.classList.toggle("is-muted",policy.value==="all")});box.classList.toggle("is-muted",policy.value==="all")})()</script>';
 }
 
 add_action('media_admin_upload_fields', function (array $context, PDO $pdo): void { ct_render_media_profile_fields($context, $pdo); }, 10, 2);
@@ -377,11 +393,11 @@ add_action('media_admin_detail_after_fields', function (array $row, array $data,
     $profile = ct_media_profile($pdo, (int)$row['id']);
     $sourceLocale = (string)($profile['metadata_source_locale'] ?? $context['content_locale'] ?? content_default_locale());
     $editableLocales = array_values(array_filter(ct_content_locales($pdo), fn(string $locale): bool => $locale !== $sourceLocale && ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $locale)));
-    $target = trim((string)($context['content_locale'] ?? ''));
-    if (!in_array($target, $editableLocales, true)) $target = (string)($editableLocales[0] ?? '');
-    if ($target === '') return;
-    $translation = ct_media_translation($pdo, (int)$row['id'], $target) ?? [];
-    $translationMap = [];
+    $translationMap = [$sourceLocale => [
+        'title' => (string)($row['title'] ?? ''), 'caption' => (string)($row['caption'] ?? ''),
+        'credit' => (string)($row['credit'] ?? ''), 'alt' => (string)($row['alt'] ?? ''),
+        'source' => true,
+    ]];
     foreach ($editableLocales as $candidateLocale) {
         $candidate = ct_media_translation($pdo, (int)$row['id'], $candidateLocale) ?? [];
         $translationMap[$candidateLocale] = [
@@ -392,25 +408,14 @@ add_action('media_admin_detail_after_fields', function (array $row, array $data,
         ];
     }
     $controlId = 'ct-media-translation-' . (int)$row['id'];
-    echo '<fieldset class="ct-media-fields"><legend>' . htmlspecialchars(__('Alternate-locale metadata'), ENT_QUOTES) . '</legend>';
-    echo '<label>' . htmlspecialchars(__('Language'), ENT_QUOTES) . '<select id="' . $controlId . '-locale" name="media_extension[content-translation][translation_locale]">';
-    foreach ($editableLocales as $locale) echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($target === $locale ? ' selected' : '') . '>' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</option>';
-    echo '</select></label>';
-    echo '<input id="' . $controlId . '-state" type="hidden" name="media_extension[content-translation][translation_state]" value="' . ct_media_translation_state($translation ?: null) . '">';
-    echo '<input id="' . $controlId . '-operation" type="hidden" name="media_extension[content-translation][translation_operation]" value="save">';
-    foreach (['title' => __('Title'), 'caption' => __('Caption'), 'credit' => __('Credit')] as $field => $label) {
-        $set = array_key_exists($field, $translation) && $translation[$field] !== null;
-        echo '<label><input id="' . $controlId . '-' . $field . '-set" type="checkbox" name="media_extension[content-translation][' . $field . '_set]" value="1"' . ($set ? ' checked' : '') . '> ' . htmlspecialchars($label, ENT_QUOTES) . '</label>';
-        $tag = $field === 'caption' ? 'textarea' : 'input';
-        echo $tag === 'textarea' ? '<textarea id="' . $controlId . '-caption" name="media_extension[content-translation][caption]">' . htmlspecialchars((string)($translation[$field] ?? ''), ENT_QUOTES) . '</textarea>' : '<input id="' . $controlId . '-' . $field . '" name="media_extension[content-translation][' . $field . ']" value="' . htmlspecialchars((string)($translation[$field] ?? ''), ENT_QUOTES) . '">';
+    echo '<div class="ct-media-translation-controls" id="' . $controlId . '-controls" hidden>';
+    foreach (['title' => __('Use translated title'), 'caption' => __('Use translated caption'), 'credit' => __('Use translated credit')] as $field => $label) {
+        echo '<label class="ct-check"><input id="' . $controlId . '-' . $field . '-set" type="checkbox"> ' . htmlspecialchars($label, ENT_QUOTES) . '</label>';
     }
-    $altMode = (string)($translation['alt_mode'] ?? 'inherit');
-    echo '<label>' . htmlspecialchars(__('Alt text mode'), ENT_QUOTES) . '<select id="' . $controlId . '-alt-mode" name="media_extension[content-translation][alt_mode]">';
-    foreach (['inherit' => __('Inherit original'), 'text' => __('Translated text'), 'decorative' => __('Decorative (empty alt)')] as $value => $label) echo '<option value="' . $value . '"' . ($altMode === $value ? ' selected' : '') . '>' . htmlspecialchars($label, ENT_QUOTES) . '</option>';
-    echo '</select></label><input id="' . $controlId . '-alt" name="media_extension[content-translation][alt]" value="' . htmlspecialchars((string)($translation['alt'] ?? ''), ENT_QUOTES) . '">';
-    $status = (string)($translation['status'] ?? 'draft');
-    echo '<label>' . htmlspecialchars(__('Status'), ENT_QUOTES) . '<select id="' . $controlId . '-status" name="media_extension[content-translation][translation_status]"><option value="draft"' . ($status === 'draft' ? ' selected' : '') . '>' . htmlspecialchars(__('Draft'), ENT_QUOTES) . '</option><option value="published"' . ($status === 'published' ? ' selected' : '') . '>' . htmlspecialchars(__('Published'), ENT_QUOTES) . '</option></select></label>';
-    echo '<button type="button" class="btn btn-danger" id="' . $controlId . '-delete">' . htmlspecialchars(__('Mark this media translation for deletion'), ENT_QUOTES) . '</button><p class="muted" id="' . $controlId . '-delete-note">' . htmlspecialchars(__('Deletion is applied when Core metadata is saved and never deletes the original metadata.'), ENT_QUOTES) . '</p></fieldset>';
-    echo '<script>(function(){var id=' . json_encode($controlId) . ', rows=' . json_encode($translationMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ', select=document.getElementById(id+"-locale");if(!select)return;select.addEventListener("change",function(){var row=rows[select.value]||{};["title","caption","credit"].forEach(function(field){var value=row[field],control=document.getElementById(id+"-"+field),set=document.getElementById(id+"-"+field+"-set");if(control)control.value=value==null?"":String(value);if(set)set.checked=value!=null});document.getElementById(id+"-alt").value=row.alt==null?"":String(row.alt);document.getElementById(id+"-alt-mode").value=row.alt_mode||"inherit";document.getElementById(id+"-status").value=row.status||"draft";document.getElementById(id+"-state").value=row.state||"";document.getElementById(id+"-operation").value="save"});document.getElementById(id+"-delete").addEventListener("click",function(){document.getElementById(id+"-operation").value="delete";document.getElementById(id+"-delete-note").textContent=' . json_encode(__('This media translation will be deleted when you save Core metadata.')) . '})})()</script>';
+    echo '<label>' . htmlspecialchars(__('Alt text mode'), ENT_QUOTES) . '<select id="' . $controlId . '-alt-mode">';
+    foreach (['inherit' => __('Inherit original'), 'text' => __('Translated text'), 'decorative' => __('Decorative (empty alt)')] as $value => $label) echo '<option value="' . $value . '">' . htmlspecialchars($label, ENT_QUOTES) . '</option>';
+    echo '</select></label><label>' . htmlspecialchars(__('Translation status'), ENT_QUOTES) . '<select id="' . $controlId . '-status"><option value="draft">' . htmlspecialchars(__('Draft'), ENT_QUOTES) . '</option><option value="published">' . htmlspecialchars(__('Published'), ENT_QUOTES) . '</option></select></label>';
+    echo '<button type="button" class="btn btn-danger" id="' . $controlId . '-delete">' . htmlspecialchars(__('Delete selected translation'), ENT_QUOTES) . '</button><p class="muted" id="' . $controlId . '-delete-note">' . htmlspecialchars(__('This affects only the selected translation; original metadata is retained.'), ENT_QUOTES) . '</p></div>';
+    echo '<script>(function(){var id=' . json_encode($controlId) . ',sourceLocale=' . json_encode($sourceLocale) . ',rows=' . json_encode($translationMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ',select=document.getElementById(id+"-locale"),slot=document.getElementById(id+"-slot"),controls=document.getElementById(id+"-controls"),form=document.getElementById("mdlib-media-edit-form");if(!select||!slot||!controls||!form)return;var fields={title:document.getElementById("mdlib-field-title"),alt:document.getElementById("mdlib-field-alt"),caption:document.getElementById("mdlib-field-caption"),credit:document.getElementById("mdlib-field-credit")},current=select.value,operation="save";Object.keys(fields).forEach(function(field){var wrap=fields[field]&&fields[field].closest(".mdlib-field");if(wrap)slot.appendChild(wrap)});slot.appendChild(controls);function capture(){var row=rows[current]||(rows[current]={});if(current===sourceLocale){Object.keys(fields).forEach(function(field){row[field]=fields[field]?fields[field].value:""});return;}["title","caption","credit"].forEach(function(field){var set=document.getElementById(id+"-"+field+"-set");row[field]=set&&set.checked?fields[field].value:null});row.alt_mode=document.getElementById(id+"-alt-mode").value;row.alt=row.alt_mode==="text"?fields.alt.value:null;row.status=document.getElementById(id+"-status").value}function render(){var row=rows[current]||{},source=rows[sourceLocale]||{},isSource=current===sourceLocale;controls.hidden=isSource;["title","caption","credit"].forEach(function(field){var set=document.getElementById(id+"-"+field+"-set"),has=row[field]!=null;if(set)set.checked=has;if(fields[field]){fields[field].value=isSource?String(row[field]||""):String(has?row[field]:(source[field]||""));fields[field].disabled=!isSource&&!has}});var altMode=isSource?"text":(row.alt_mode||"inherit");document.getElementById(id+"-alt-mode").value=altMode;if(fields.alt){fields.alt.value=isSource?String(row.alt||""):String(altMode==="text"?(row.alt||""):(altMode==="inherit"?(source.alt||""):""));fields.alt.disabled=!isSource&&altMode!=="text"}document.getElementById(id+"-status").value=row.status||"draft";operation="save";document.getElementById(id+"-delete-note").textContent=' . json_encode(__('This affects only the selected translation; original metadata is retained.')) . '}select.addEventListener("change",function(){capture();current=select.value;render()});["title","caption","credit"].forEach(function(field){var set=document.getElementById(id+"-"+field+"-set");if(set)set.addEventListener("change",function(){fields[field].disabled=!set.checked;if(set.checked&&fields[field].disabled===false)fields[field].focus()})});document.getElementById(id+"-alt-mode").addEventListener("change",function(){var mode=this.value;fields.alt.disabled=mode!=="text";fields.alt.value=mode==="inherit"?String((rows[sourceLocale]||{}).alt||""):(mode==="decorative"?"":String((rows[current]||{}).alt||""));if(!fields.alt.disabled)fields.alt.focus()});document.getElementById(id+"-delete").addEventListener("click",function(){operation="delete";document.getElementById(id+"-delete-note").textContent=' . json_encode(__('This media translation will be deleted when you save.')) . '});form.addEventListener("formdata",function(event){capture();var data=event.formData,source=rows[sourceLocale]||{};Object.keys(fields).forEach(function(field){data.set(field,String(source[field]||""))});["translation_locale","translation_state","translation_operation","title_set","title","caption_set","caption","credit_set","credit","alt_mode","alt","translation_status"].forEach(function(field){data.delete("media_extension[content-translation]["+field+"]")});if(current===sourceLocale)return;var row=rows[current]||{};data.set("media_extension[content-translation][translation_locale]",current);data.set("media_extension[content-translation][translation_state]",String(row.state||""));data.set("media_extension[content-translation][translation_operation]",operation);if(operation==="delete")return;["title","caption","credit"].forEach(function(field){if(row[field]!=null){data.set("media_extension[content-translation]["+field+"_set]","1");data.set("media_extension[content-translation]["+field+"]",String(row[field]))}});data.set("media_extension[content-translation][alt_mode]",String(row.alt_mode||"inherit"));if(row.alt_mode==="text")data.set("media_extension[content-translation][alt]",String(row.alt||""));data.set("media_extension[content-translation][translation_status]",String(row.status||"draft"))});render()})()</script>';
 }, 10, 4);
 }

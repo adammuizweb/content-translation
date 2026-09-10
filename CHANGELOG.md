@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.14.1 - 2026-09-10
+
+- Keep selected media-availability locales persisted by switching the policy automatically when locale checkboxes are used.
+- Unify original and alternate media metadata in one language-switched editor.
+- Match the Core Quill toolbar and open the canonical contextual media modal from translated post content and featured-media controls.
+
 ## 1.14.0 - 2026-09-10
 
 - Add source-language-aware media profiles, reviewed localized metadata, explicit availability, and distinct inherited/text/decorative alt semantics.

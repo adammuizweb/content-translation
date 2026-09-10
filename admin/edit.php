@@ -82,7 +82,8 @@ $featuredRow = $featuredId > 0 && function_exists('media_load_live') ? media_loa
 $featuredUrl = $featuredRow && function_exists('media_client_url') ? media_client_url($featuredRow, true) : null;
 $featuredCompatible = $featuredMode !== 'media' || ($featuredRow && media_client_url($featuredRow, false) !== null && ct_media_is_available($pdo, $featuredId, $locale));
 $mediaConsumer = $post['type'] === 'page' ? 'page' : 'post';
-$pickerUrl = $localizedMediaSupported ? $base . '/admin/modal_img/?embedded=1&' . media_picker_query([
+$pickerBaseUrl = $localizedMediaSupported ? $base . '/admin/modal_img/index.php?embedded=1' : '';
+$pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_query([
     'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
     'field' => 'featured', 'content_locale' => $locale,
 ]) : '';
@@ -225,6 +226,20 @@ $pickerUrl = $localizedMediaSupported ? $base . '/admin/modal_img/?embedded=1&' 
   let quill = null;
   let codeMirror = null;
   const pickerContext = <?= json_encode(['consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  const fullToolbar = [
+    [{ header: [1, 2, 3, 4, 5, 6, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ color: [] }, { background: [] }],
+    [{ script: 'sub' }, { script: 'super' }],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    [{ indent: '-1' }, { indent: '+1' }],
+    [{ align: [] }],
+    ['blockquote', 'code-block'],
+    ['link', 'image', 'video'],
+    [{ size: ['small', false, 'large', 'huge'] }],
+    ['clean']
+  ];
 
   if (document.getElementById('ct-codemirror') && window.CodeMirror) {
     codeMirror = CodeMirror.fromTextArea(document.getElementById('ct-codemirror'), {
@@ -243,14 +258,35 @@ $pickerUrl = $localizedMediaSupported ? $base . '/admin/modal_img/?embedded=1&' 
   } else if (window.Quill) {
     quill = new Quill('#ct-quill', {
       theme: 'snow',
-      modules: { toolbar: [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['blockquote', 'code-block', 'link', 'image'],
-        ['clean']
-      ] }
+      modules: { toolbar: fullToolbar },
+      placeholder: window.QUILL_PLACEHOLDER || <?= json_encode(__('Write article content here...')) ?>
     });
+    const toolbar = quill.getModule('toolbar');
+    if (toolbar && typeof toolbar.addHandler === 'function') {
+      toolbar.addHandler('image', function(){
+        const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
+        if (typeof window.openMediaSelector !== 'function') return;
+        window.openMediaSelector({
+          url: <?= json_encode($pickerBaseUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+          context: inlinePickerContext,
+          maxWidth: '980px'
+        }).then(function(detail){
+          if (!detail) return;
+          const url = String(detail.protected_url || detail.url || '');
+          if (!url) return;
+          quill.insertEmbed(range.index, 'image', url, 'user');
+          quill.setSelection(range.index + 1, 0);
+          setTimeout(function(){
+            const images = Array.from(quill.root.querySelectorAll('img')).filter(function(image){ return image.getAttribute('src') === url; });
+            const image = images[images.length - 1];
+            if (!image) return;
+            if (detail.alt) image.setAttribute('alt', String(detail.alt));
+            if (detail.title) image.setAttribute('title', String(detail.title));
+            if (detail.caption) image.setAttribute('data-caption', String(detail.caption));
+          }, 0);
+        }).catch(function(error){ console.warn('[content-translation] media picker failed', error); });
+      });
+    }
   }
 
   function notify(type, msg) {
@@ -283,7 +319,10 @@ $pickerUrl = $localizedMediaSupported ? $base . '/admin/modal_img/?embedded=1&' 
   }
   document.getElementById('ct-featured-choose')?.addEventListener('click', function(){
     const url = <?= json_encode($pickerUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-    if (window.adamModalOpen) window.adamModalOpen(url, {maxWidth:'980px'}); else window.open(url, 'ct-media-picker');
+    if (typeof window.openMediaSelector !== 'function') return;
+    window.openMediaSelector({ url: url, maxWidth: '980px' })
+      .then(selectFeatured)
+      .catch(function(error){ console.warn('[content-translation] featured media picker failed', error); });
   });
   document.addEventListener('media:insert', function(event){ selectFeatured(event.detail); });
   window.addEventListener('message', function(event){ if (event.origin === window.location.origin && event.data?.type === 'media:insert') selectFeatured(event.data.detail); });
