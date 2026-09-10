@@ -342,6 +342,7 @@ if (!function_exists('ct_ensure_schema')) {
             ] as $table) {
                 ct_expand_locale_column($pdo, $table);
             }
+            if (function_exists('ct_localized_media_supported') && ct_localized_media_supported()) ct_ensure_media_schema($pdo);
             ct_130_migrate_legacy_authored_posts(
                 $pdo,
                 function_exists('content_default_locale') ? content_default_locale() : 'en'
@@ -741,6 +742,14 @@ if (!function_exists('ct_ensure_schema')) {
             'direct_user_locale_edit_grants' => 'SELECT g.*, u.email AS user_email FROM ct_user_locale_edit_grants g INNER JOIN users u ON u.id = g.user_id ORDER BY g.user_id, g.locale',
             'role_locale_edit_grants' => 'SELECT g.*, r.slug AS role_slug, r.name AS role_name FROM ct_role_locale_edit_grants g INNER JOIN roles r ON r.id = g.role_id ORDER BY g.role_id, g.locale',
         ];
+        if (function_exists('ct_localized_media_supported') && ct_localized_media_supported()) {
+            $tables += [
+                'media_profiles' => 'SELECT mp.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_media_profiles mp INNER JOIN media m ON m.id = mp.media_id ORDER BY mp.media_id',
+                'media_available_locales' => 'SELECT * FROM ct_media_available_locales ORDER BY media_id, locale',
+                'media_translations' => 'SELECT mt.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_media_translations mt INNER JOIN media m ON m.id = mt.media_id ORDER BY mt.media_id, mt.locale',
+                'localized_featured_media' => 'SELECT f.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_post_featured_media f LEFT JOIN media m ON m.id = f.media_id ORDER BY f.post_id, f.locale, f.role',
+            ];
+        }
         $translations = [];
         foreach ($tables as $name => $sql) {
             $translations[$name] = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
@@ -748,7 +757,7 @@ if (!function_exists('ct_ensure_schema')) {
 
         return [
             'format' => 'jyavani-content-translation-export',
-            'version' => 6,
+            'version' => 7,
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),
@@ -816,7 +825,7 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
-    function ct_save_translation_locked(PDO $pdo, int $postId, string $locale, string $loadedState, array $data, int $actorId): array {
+    function ct_save_translation_locked(PDO $pdo, int $postId, string $locale, string $loadedState, array $data, int $actorId, ?array $featured = null): array {
         if ($postId <= 0 || $actorId <= 0 || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
             || !function_exists('ct_translation_row_state_token')) {
             throw new InvalidArgumentException('Editor lock state is invalid. Reload the editor.');
@@ -826,7 +835,9 @@ if (!function_exists('ct_ensure_schema')) {
         if ($ownsTransaction) $pdo->beginTransaction();
         try {
             if (!authorization_lock_actor_permissions($pdo, $actorId)) throw new RuntimeException('Authorization state is unavailable.');
-            $source = $pdo->prepare('SELECT id, type, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
+            $mediaColumns = $featured !== null && function_exists('ct_localized_media_supported') && ct_localized_media_supported()
+                ? ', thumbnail_media_id, thumbnail, youtube' : '';
+            $source = $pdo->prepare('SELECT id, type, meta, status, created_by' . $mediaColumns . ' FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1 FOR UPDATE');
             $source->execute([$postId]);
             $sourcePost = $source->fetch(PDO::FETCH_ASSOC);
             if (!$sourcePost) throw new RuntimeException('Source post no longer exists.');
@@ -841,14 +852,24 @@ if (!function_exists('ct_ensure_schema')) {
             $currentStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE');
             $currentStmt->execute([$postId, $locale]);
             $current = $currentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-            if (!hash_equals($loadedState, ct_translation_row_state_token($current))) {
+            $currentFeatured = $featured !== null ? ct_featured_selection($pdo, $postId, $locale, 'featured', true) : null;
+            $currentState = $featured !== null ? ct_translation_editor_state($current, $currentFeatured) : ct_translation_row_state_token($current);
+            if (!hash_equals($loadedState, $currentState)) {
                 throw new RuntimeException('This translation was changed by another editor. Reload before saving.');
             }
             if (((string)($data['status'] ?? 'published') === 'published' || (string)($current['status'] ?? '') === 'published')
                 && !ct_user_can_publish_post_translation($pdo, $sourcePost, $locale, $actorId)) {
                 throw new RuntimeException('Publishing translation permission denied.');
             }
+            if ($featured !== null) {
+                $featured['source_fingerprint'] = ct_featured_source_fingerprint($sourcePost);
+                if ((string)($data['status'] ?? '') === 'published' && $featured['mode'] === 'media'
+                    && ct_media_public_row($pdo, (int)$featured['mediaId'], $locale, true) === null) {
+                    throw new RuntimeException('Published translations require available public media.');
+                }
+            }
             if (!ct_save_translation($pdo, $postId, $locale, $data, $actorId)) throw new RuntimeException('Translation save failed.');
+            if ($featured !== null) ct_save_featured_selection($pdo, $postId, $locale, $featured, $actorId);
 
             $savedStmt = $pdo->prepare('SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1');
             $savedStmt->execute([$postId, $locale]);
@@ -898,9 +919,17 @@ if (!function_exists('ct_ensure_schema')) {
             $currentStmt = $pdo->prepare("SELECT * FROM post_translations WHERE post_id = ? AND locale = ? LIMIT 1 FOR UPDATE");
             $currentStmt->execute([$postId, $locale]);
             $current = $currentStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            $supportsFeatured = function_exists('ct_localized_media_supported') && ct_localized_media_supported()
+                && in_array((string)$sourcePost['type'], ['article', 'page'], true);
+            $selection = $supportsFeatured
+                ? ct_featured_selection($pdo, $postId, $locale, 'featured', true)
+                : null;
+            $expectedState = $supportsFeatured
+                ? ct_translation_editor_state($current, $selection)
+                : ct_translation_row_state_token($current);
             if (!function_exists('ct_translation_row_state_token')
                 || preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1
-                || !hash_equals($loadedState, ct_translation_row_state_token($current))) {
+                || !hash_equals($loadedState, $expectedState)) {
                 throw new RuntimeException('This translation was changed by another editor. Reload before deleting.');
             }
             if ((string)($current['status'] ?? '') === 'published'
@@ -909,6 +938,8 @@ if (!function_exists('ct_ensure_schema')) {
             }
             $stmt = $pdo->prepare("DELETE FROM post_translations WHERE post_id = ? AND locale = ?");
             $ok = $stmt->execute([$postId, $locale]);
+            $featured = $pdo->prepare("DELETE FROM ct_post_featured_media WHERE post_id = ? AND locale = ?");
+            $featured->execute([$postId, $locale]);
             $meta = $pdo->prepare("DELETE FROM ct_theme_section_translation_meta WHERE post_id = ? AND locale = ?");
             $meta->execute([$postId, $locale]);
             if ($ok && !ct_recompute_post_effective_status($pdo, $postId)) {

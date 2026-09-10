@@ -169,6 +169,12 @@
 }
 .ct-panel h3 { margin-top: 0; }
 .ct-translation-panel { min-width: 0; }
+.ct-featured-panel, .ct-media-fields { display:grid; gap:.6rem; margin:1rem 0; padding:1rem; border:1px solid rgba(127,127,127,.25); border-radius:8px; }
+.ct-featured-panel > label, .ct-media-locales { display:flex; gap:.65rem; flex-wrap:wrap; }
+.ct-featured-panel input[type="text"], .ct-featured-panel textarea, .ct-media-fields input:not([type="checkbox"]), .ct-media-fields textarea, .ct-media-fields select { box-sizing:border-box; width:100%; padding:.45rem .6rem; }
+.ct-featured-preview { display:flex; align-items:center; gap:.7rem; padding:.55rem; background:rgba(127,127,127,.07); border-radius:7px; }
+.ct-featured-preview img { width:88px; height:58px; object-fit:cover; border-radius:5px; }
+.ct-featured-warning { margin:0; color:#b45309; font-weight:600; }
 .ct-source-panel { min-width: 0; }
 .ct-source-panel summary {
   cursor: pointer;

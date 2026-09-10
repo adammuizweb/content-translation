@@ -48,7 +48,7 @@ $check(str_contains($sources['packages'], 'belongs to a different theme'), 'pack
 $check(str_contains($sources['packages'], 'Theme Section package is too large'), 'package writer enforces the v1 reader aggregate size limit');
 $check(str_contains($sources['packages'], 'HTML declarations and comments are not allowed'), 'write validator rejects browser-tokenizer comment ambiguity');
 $check(str_contains($sources['packages'], 'rollBack()') && str_contains($sources['packages'], 'ct_theme_section_translation_meta'), 'failed package saves roll back translation and source metadata together');
-$check(str_contains($sources['helpers'], "'version' => 6") && str_contains($sources['helpers'], "'theme_section_translation_metadata'"), 'versioned export includes source verification metadata');
+$check(str_contains($sources['helpers'], "'version' => 7") && str_contains($sources['helpers'], "'theme_section_translation_metadata'"), 'versioned export includes source verification metadata');
 $check(str_contains($sources['helpers'], 'CREATE TABLE IF NOT EXISTS ct_theme_section_translation_meta'), 'metadata schema creation is idempotent and plugin-owned');
 $check(str_contains($sources['save'], '!$homepage && $slug ===') && str_contains($sources['save'], '(!$homepage && $slug === \'\')'), 'package endpoint preserves homepage empty-slug exception');
 $check(str_contains($sources['list'], '$perPage = 20') && str_contains($sources['list'], '$totalPages'), 'Theme Sections list uses 20-row exact filtered pagination');

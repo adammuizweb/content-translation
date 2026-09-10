@@ -6,6 +6,7 @@ declare(strict_types=1);
 $__ct_dir = __DIR__;
 
 require_once $__ct_dir . '/includes/helpers.php';
+require_once $__ct_dir . '/includes/media.php';
 require_once $__ct_dir . '/includes/shortcode-presets.php';
 require_once $__ct_dir . '/includes/frontend.php';
 require_once $__ct_dir . '/includes/theme-section-packages.php';
@@ -23,12 +24,18 @@ add_action('theme_zone_item_before_delete', function (int $itemId, PDO $pdo): vo
 add_filter('plugin_state_change_preflight', function (array $state, string $name, string $operation): array {
     if (!$state['allowed'] || $name !== 'content-translation' || !in_array($operation, ['disable', 'delete'], true)) return $state;
     $pdo = $GLOBALS['pdo'] ?? null;
-    if (!$pdo instanceof PDO || ct_post_authoring_locales_in_use($pdo) === []) return $state;
-
-    return [
-        'allowed' => false,
-        'message' => __('Content Translation cannot be disabled or uninstalled while localized content workflows exist.'),
-    ];
+    if (!$pdo instanceof PDO) return ['allowed' => false, 'message' => __('Content Translation state could not be verified.')];
+    try {
+        if (ct_post_authoring_locales_in_use($pdo) !== []) {
+            return ['allowed' => false, 'message' => __('Content Translation cannot be disabled or uninstalled while localized content workflows exist.')];
+        }
+        if (ct_localized_media_state_exists($pdo)) {
+            return ['allowed' => false, 'message' => __('Content Translation cannot be disabled or deleted while localized media state exists.')];
+        }
+        return $state;
+    } catch (Throwable $error) {
+        return ['allowed' => false, 'message' => __('Content Translation state could not be verified.')];
+    }
 }, 10, 3);
 
 add_action('plugin_uninstall', function (string $name): void {
@@ -62,6 +69,10 @@ add_action('plugin_uninstall', function (string $name): void {
         'ct_ui_translation_seeds',
         'ct_user_locale_edit_grants',
         'ct_role_locale_edit_grants',
+        'ct_post_featured_media',
+        'ct_media_translations',
+        'ct_media_available_locales',
+        'ct_media_profiles',
     ] as $table) {
         $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
     }

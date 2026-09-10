@@ -28,7 +28,9 @@ if ($postId <= 0 || $locale === '') {
     return;
 }
 
-$stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$localizedMediaSupported = function_exists('ct_localized_media_supported') && ct_localized_media_supported();
+$mediaColumns = $localizedMediaSupported ? ', thumbnail_media_id, thumbnail, youtube' : '';
+$stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by{$mediaColumns} FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$post || !ct_user_can_view_post_representation($pdo, $post)) {
@@ -72,6 +74,18 @@ $publishedTranslation = $isSource ? (ct_source_post_is_public($pdo, $post) ? $tr
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
 $coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit' : ($post['type'] === 'theme' ? 'admin/themes/edit' : 'admin/posts/edit')) . '&id=' . $postId;
+$supportsFeatured = $localizedMediaSupported && !$isSource && in_array($post['type'], ['article', 'page'], true);
+$featuredSelection = $supportsFeatured ? ct_featured_selection($pdo, $postId, $locale) : null;
+$featuredMode = (string)($featuredSelection['mode'] ?? 'inherit');
+$featuredId = (int)($featuredSelection['media_id'] ?? 0);
+$featuredRow = $featuredId > 0 && function_exists('media_load_live') ? media_load_live($pdo, $featuredId) : null;
+$featuredUrl = $featuredRow && function_exists('media_client_url') ? media_client_url($featuredRow, true) : null;
+$featuredCompatible = $featuredMode !== 'media' || ($featuredRow && media_client_url($featuredRow, false) !== null && ct_media_is_available($pdo, $featuredId, $locale));
+$mediaConsumer = $post['type'] === 'page' ? 'page' : 'post';
+$pickerUrl = $localizedMediaSupported ? $base . '/admin/modal_img/?embedded=1&' . media_picker_query([
+    'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
+    'field' => 'featured', 'content_locale' => $locale,
+]) : '';
 ?>
 
 <div class="ct-admin ct-editor">
@@ -110,7 +124,7 @@ $coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit'
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="post_id" value="<?= $postId ?>">
         <input type="hidden" name="locale" value="<?= h($locale) ?>">
-        <input type="hidden" name="translation_state" value="<?= h(ct_translation_row_state_token($translationRow)) ?>">
+        <input type="hidden" name="translation_state" value="<?= h($supportsFeatured ? ct_translation_editor_state($translationRow, $featuredSelection) : ct_translation_row_state_token($translationRow)) ?>">
 
         <div class="ct-field">
           <label for="ct-title"><?= __('Title') ?></label>
@@ -131,6 +145,26 @@ $coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit'
             <option value="draft"<?= ($translation['status'] ?? 'published') === 'draft' ? ' selected' : '' ?>><?= __('Draft') ?></option>
           </select>
         </div>
+        <?php if ($supportsFeatured): ?>
+        <fieldset class="ct-featured-panel">
+          <legend><?= __('Localized featured media') ?></legend>
+          <p class="muted"><?= __('YouTube remains the first display-image source. This selection is used when no valid YouTube thumbnail is present.') ?></p>
+          <label><input type="radio" name="featured_mode" value="inherit"<?= $featuredMode === 'inherit' ? ' checked' : '' ?>> <?= __('Inherit source thumbnail') ?></label>
+          <label><input type="radio" name="featured_mode" value="media"<?= $featuredMode === 'media' ? ' checked' : '' ?>> <?= __('Choose media for this locale') ?></label>
+          <label><input type="radio" name="featured_mode" value="none"<?= $featuredMode === 'none' ? ' checked' : '' ?>> <?= __('No thumbnail') ?></label>
+          <input type="hidden" id="ct-featured-media-id" name="featured_media_id" value="<?= $featuredId ?: '' ?>">
+          <div class="ct-featured-preview" id="ct-featured-preview"<?= $featuredUrl ? '' : ' hidden' ?>>
+            <img src="<?= h((string)$featuredUrl) ?>" alt="">
+            <span><?= $featuredRow ? h((string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '')) : '' ?></span>
+          </div>
+          <button type="button" class="btn" id="ct-featured-choose"><?= __('Open media picker') ?></button>
+          <p id="ct-featured-warning" class="ct-featured-warning"<?= $featuredCompatible ? ' hidden' : '' ?>><?= __('This media is unavailable, private, or deleted for the selected locale. It may remain in a draft but cannot be published.') ?></p>
+          <label class="ct-check"><input type="checkbox" name="featured_alt_override_enabled" value="1"<?= $featuredSelection && $featuredSelection['alt_override'] !== null ? ' checked' : '' ?>> <?= __('Override alt text at this use site') ?></label>
+          <input type="text" name="featured_alt_override" value="<?= h((string)($featuredSelection['alt_override'] ?? '')) ?>" maxlength="4096">
+          <label class="ct-check"><input type="checkbox" name="featured_caption_override_enabled" value="1"<?= $featuredSelection && $featuredSelection['caption_override'] !== null ? ' checked' : '' ?>> <?= __('Override caption at this use site') ?></label>
+          <textarea name="featured_caption_override" rows="2"><?= h((string)($featuredSelection['caption_override'] ?? '')) ?></textarea>
+        </fieldset>
+        <?php endif; ?>
         <div class="ct-field">
           <label><?= __('Content') ?></label>
           <?php if ($usesCodeMirror): ?>
@@ -190,6 +224,7 @@ $coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit'
   const form = document.getElementById('ct-form');
   let quill = null;
   let codeMirror = null;
+  const pickerContext = <?= json_encode(['consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
   if (document.getElementById('ct-codemirror') && window.CodeMirror) {
     codeMirror = CodeMirror.fromTextArea(document.getElementById('ct-codemirror'), {
@@ -231,6 +266,27 @@ $coreEditor = $base . '/?page=' . ($post['type'] === 'page' ? 'admin/pages/edit'
     if (codeMirror) return codeMirror.getValue();
     return quill ? quill.root.innerHTML : '';
   }
+
+  function selectFeatured(detail) {
+    if (!detail || !detail.id || !detail.context || !form.elements.featured_media_id) return;
+    const context = detail.context;
+    if (context.consumer !== pickerContext.consumer || Number(context.resource_id) !== pickerContext.resource_id
+        || context.field !== pickerContext.field || context.content_locale !== pickerContext.content_locale) return;
+    form.elements.featured_media_id.value = String(detail.id);
+    form.querySelector('[name="featured_mode"][value="media"]').checked = true;
+    const preview = document.getElementById('ct-featured-preview');
+    preview.querySelector('img').src = detail.protected_url || detail.url || '';
+    preview.querySelector('span').textContent = detail.filename || detail.title || ('Media #' + detail.id);
+    preview.hidden = false;
+    const localeAvailable = detail.extensions?.content_translation?.available !== false;
+    document.getElementById('ct-featured-warning').hidden = localeAvailable && detail.visibility === 'public' && detail.storage_disk === 'public' && detail.access_scope === 'public';
+  }
+  document.getElementById('ct-featured-choose')?.addEventListener('click', function(){
+    const url = <?= json_encode($pickerUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    if (window.adamModalOpen) window.adamModalOpen(url, {maxWidth:'980px'}); else window.open(url, 'ct-media-picker');
+  });
+  document.addEventListener('media:insert', function(event){ selectFeatured(event.detail); });
+  window.addEventListener('message', function(event){ if (event.origin === window.location.origin && event.data?.type === 'media:insert') selectFeatured(event.data.detail); });
 
   form.addEventListener('submit', async function(e) {
     e.preventDefault();

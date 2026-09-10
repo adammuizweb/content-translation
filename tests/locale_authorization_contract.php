@@ -98,9 +98,9 @@ $check(str_contains($helpers, "(\$post['type'] ?? '') === 'theme' && !ct_user_is
     && str_contains($themeSections, 'ct_user_can_edit_post_locale')
     && str_contains($themeSections, "'updated_by', 'created_at'"),
     'Theme Template translations retain Site Owner policy, locked reauthorization, and complete optimistic attribution state');
-$check(str_contains($helpers, "'version' => 6") && str_contains($helpers, 'author_locale_preferences')
+$check(str_contains($helpers, "'version' => 7") && str_contains($helpers, 'author_locale_preferences')
     && str_contains($helpers, 'direct_user_locale_edit_grants') && str_contains($helpers, 'updated_by'),
-    'export schema 6 includes preferences, grants, and attribution');
+    'export schema 7 includes preferences, grants, and attribution');
 $check(str_contains($plugin, "'ct_user_locale_edit_grants'") && str_contains($plugin, "'ct_role_locale_edit_grants'"),
     'uninstall removes plugin-owned grant tables');
 

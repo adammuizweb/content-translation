@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.14.0 - 2026-09-10
+
+- Add source-language-aware media profiles, reviewed localized metadata, explicit availability, and distinct inherited/text/decorative alt semantics.
+- Add atomic locale-specific featured media selection for post and page translations while preserving Core's YouTube-first display policy.
+- Integrate localized media with Core mutation and lifecycle transactions, purge protection, default-locale preflight, uninstall, and export format 7.
+- Lock and optimistically validate media profile, availability, and translation rows; protect source-language reclassification with old/new locale grants and explicit translation conflict checks.
+- Carry picker availability diagnostics into post/page draft UX and add transaction-safe media-translation deletion.
+- Require Jyavani Core 2.3.108 and its generic media extension contract.
+
 ## 1.13.2 - 2026-09-02
 
 - Separate default writing-language preferences from explicit user and role locale edit grants.

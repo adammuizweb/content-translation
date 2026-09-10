@@ -194,6 +194,13 @@ add_filter('site_settings_validation_errors', function ($errors, $pdo, $input, $
     if (ct_post_authoring_locales_in_use($pdo) !== []) {
         $errors[] = __('Content default language cannot change while localized content workflows exist.');
     }
+    if (function_exists('ct_localized_media_supported') && ct_localized_media_supported()) {
+        try {
+            if (ct_localized_media_state_exists($pdo)) $errors[] = __('Content default language cannot change while localized media state exists.');
+        } catch (Throwable $error) {
+            $errors[] = __('Content default language cannot change because localized media state could not be verified.');
+        }
+    }
     return $errors;
 }, 10, 4);
 

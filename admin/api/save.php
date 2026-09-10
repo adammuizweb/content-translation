@@ -32,7 +32,9 @@ if (preg_match('/\A[a-f0-9]{64}\z/', $loadedState) !== 1) {
 }
 
 $actorId = ct_current_user_id();
-$stmt = $pdo->prepare("SELECT id, type, content, meta, status, created_by FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$localizedMediaSupported = function_exists('ct_localized_media_supported') && ct_localized_media_supported();
+$mediaColumns = $localizedMediaSupported ? ', thumbnail_media_id, thumbnail, youtube' : '';
+$stmt = $pdo->prepare("SELECT id, type, content, meta, status, created_by{$mediaColumns} FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $sourcePost = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$sourcePost || !in_array((string)($sourcePost['type'] ?? ''), ['article', 'page', 'theme'], true)) {
@@ -164,17 +166,29 @@ try {
     }
 
     try {
-        $saved = ct_save_translation_locked($pdo, $postId, $locale, $loadedState, $candidate, $actorId);
+        $featured = $localizedMediaSupported && in_array((string)$sourcePost['type'], ['article', 'page'], true)
+            ? ct_featured_candidate_from_input($pdo, $_POST, $locale, $sourcePost, $status)
+            : null;
+    } catch (InvalidArgumentException $error) {
+        echo json_encode(['error' => __($error->getMessage())]);
+        return;
+    }
+
+    try {
+        $saved = ct_save_translation_locked($pdo, $postId, $locale, $loadedState, $candidate, $actorId, $featured);
+        $savedFeatured = $featured !== null ? ct_featured_selection($pdo, $postId, $locale) : null;
         echo json_encode([
             'success' => true,
             'message' => __('Translation saved.'),
-            'translation_state' => ct_translation_row_state_token($saved),
+            'translation_state' => $featured !== null ? ct_translation_editor_state($saved, $savedFeatured) : ct_translation_row_state_token($saved),
         ]);
     } catch (Throwable $error) {
         error_log('[content-translation] locked save error: ' . $error->getMessage());
-        $message = str_contains($error->getMessage(), 'changed by another editor')
-            ? __('This translation was changed by another editor. Reload before saving.')
-            : __('Save failed.');
+        $message = match (true) {
+            str_contains($error->getMessage(), 'changed by another editor') => __('This translation was changed by another editor. Reload before saving.'),
+            str_contains($error->getMessage(), 'available public media') => __('This media is unavailable, private, or deleted for the selected locale. Save as draft or choose compatible media.'),
+            default => __('Save failed.'),
+        };
         echo json_encode(['error' => $message]);
     }
 } finally {

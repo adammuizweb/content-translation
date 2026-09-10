@@ -21,6 +21,7 @@ $requiredPermissions = [
     'core.settings.manage', 'core.posts.read', 'core.pages.read', 'core.categories.read',
     'core.users.read', 'core.shortcodes.read', 'core.theme_content.read',
     'core.menus.manage', 'core.sidebar.manage', 'core.themes.manage',
+    'core.media.read',
 ];
 if (!ct_user_can_workspace($pdo)
     || array_filter($requiredPermissions, static fn(string $permission): bool => !user_can($pdo, $actorId, $permission)) !== []) {

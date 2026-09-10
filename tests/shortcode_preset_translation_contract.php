@@ -47,7 +47,7 @@ $check(str_contains($source['resource'], "return_to=") && str_contains($source['
 $check(str_contains($source['editor'], 'Fetched Posts or Pages are translated through their existing Content Translation resources'), 'editor explains no-source-kicker content translation behavior');
 $check(str_contains($source['resource'], "admin_shortcode_preset_before_delete") && !str_contains($source['resource'], "admin_shortcode_preset_after_delete") && str_contains($source['resource'], 'DELETE FROM shortcode_preset_translations WHERE preset_id = ?'), 'failure-propagating Core pre-delete hook cleans plugin-owned translations');
 $check(str_contains($source['helpers'], 'CREATE TABLE IF NOT EXISTS shortcode_preset_translations') && str_contains($source['helpers'], 'UNIQUE KEY uniq_shortcode_preset_locale (preset_id, locale)'), 'plugin schema is idempotent and unique by preset and locale');
-$check(str_contains($source['helpers'], "'version' => 6") && str_contains($source['helpers'], "'shortcode_preset_translations'"), 'versioned export includes Shortcode Preset translations');
+$check(str_contains($source['helpers'], "'version' => 7") && str_contains($source['helpers'], "'shortcode_preset_translations'"), 'versioned export includes Shortcode Preset translations');
 $check(str_contains($source['bootstrap'], "'shortcode_preset_translations'") && str_contains($source['export'], '$requiredPermissions'), 'uninstall drops preset translations and export enforces broad permission matrix');
 $check(str_contains($source['helpers'], "p.is_deleted = 0 ORDER BY spt.preset_id") && str_contains($source['list'], 'ct-repair-preset-orphans'), 'exports exclude deleted sources and admins can repair legacy orphans');
 $check(str_contains($source['resource'], 'shortcode_preset_preview_config') && str_contains($source['resource'], 'shortcode-preset-preview-config') && str_contains($source['resource'], 'config.kicker=""'), 'all three source kicker states flow through Core live preview');
@@ -60,7 +60,7 @@ $check(str_contains($source['editor'], "\$deleteReturnUrl") && str_contains($sou
 $check(str_contains($source['resource'], 'ct_ui_translation_seeds') && str_contains($source['resource'], 'AND value = ?'), 'owned seed updates preserve user-edited translation values');
 $check(str_contains($source['resource'], 'DELETE FROM ui_translations WHERE scope = ? AND source = ? AND locale = ? AND value = ?') && str_contains($source['resource'], 'DELETE FROM ct_ui_translation_seeds WHERE scope = ? AND source_hash = ? AND locale = ?'), 'reseed prunes obsolete ownership and only matching owned UI values');
 $check(str_contains($source['uninstall'], 'INNER JOIN ct_ui_translation_seeds') && str_contains($source['uninstall'], 'owned.value = ui.value'), 'uninstall deletes only unmodified plugin-owned UI seed rows');
-$check(($manifest['version'] ?? '') === '1.13.2' && ($manifest['requires']['jyavani'] ?? '') === '>=2.3.98' && str_contains((string)($manifest['assets']['css'][0] ?? ''), 'v=1.13.2'), 'manifest keeps version/cache key and requires read-only attribution and multilingual theme Core contracts');
+$check(($manifest['version'] ?? '') === '1.14.0' && ($manifest['requires']['jyavani'] ?? '') === '>=2.3.108' && str_contains((string)($manifest['assets']['css'][0] ?? ''), 'v=1.14.0'), 'manifest keeps version/cache key aligned and requires the Core media extension contract');
 
 if ($failures !== []) {
     fwrite(STDERR, count($failures) . " assertion(s) failed.\n");
