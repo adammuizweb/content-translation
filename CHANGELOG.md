@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.1 - 2026-09-11
+
+- Place localized collection paths directly below the Core Post and Page list settings.
+- Use one responsive language selector so large locale sets remain compact and accessible.
+- Preserve every locale input in the Site Settings form while switching the visible language pane.
+
 ## 1.15.0 - 2026-09-11
 
 - Add independently configurable Post and Page list paths for each translated locale.

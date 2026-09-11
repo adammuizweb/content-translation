@@ -62,7 +62,7 @@ $pdo->exec("INSERT INTO category_translations VALUES (1, 'id', 'Berita', 'publis
 $pdo->exec("INSERT INTO category_translations VALUES (2, 'id', 'Draf Tersembunyi', 'draft')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.15.0', 'plugin release is 1.15.0');
+$check(($manifest['version'] ?? '') === '1.15.1', 'plugin release is 1.15.1');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');

@@ -443,18 +443,48 @@ add_action('site_settings_after_general', function ($pdo) {
         echo '<div data-ct-site-locale="' . htmlspecialchars($locale, ENT_QUOTES) . '" style="display:' . ($index === 0 ? 'block' : 'none') . ';margin-top:.6rem"><input class="inp inp-w100" name="ct_site_title[' . htmlspecialchars($locale, ENT_QUOTES) . ']" value="' . htmlspecialchars((string)($translation['title'] ?? ''), ENT_QUOTES) . '" placeholder="' . htmlspecialchars(__('Site title'), ENT_QUOTES) . '"><textarea class="inp inp-w100" rows="2" style="display:block;margin-top:.6rem" name="ct_site_description[' . htmlspecialchars($locale, ENT_QUOTES) . ']" placeholder="' . htmlspecialchars(__('Site description'), ENT_QUOTES) . '">' . htmlspecialchars((string)($translation['description'] ?? ''), ENT_QUOTES) . '</textarea></div>';
     }
     echo '</div><script>(function(){var box=document.getElementById(' . json_encode($id) . ');if(!box)return;var select=box.querySelector(".ct-site-identity-locale");select.addEventListener("change",function(){box.querySelectorAll("[data-ct-site-locale]").forEach(function(field){field.style.display=field.dataset.ctSiteLocale===select.value?"block":"none"})})})()</script>';
+}, 10, 1);
+
+add_action('site_settings_after_collection_paths', function ($pdo, $input = []) {
+    if (!$pdo instanceof PDO || !is_array($input) || !ct_user_can_workspace($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.settings.manage')) return;
+    $locales = ct_enabled_locales($pdo);
+    if ($locales === []) return;
+
     $paths = ct_collection_route_paths($pdo);
-    echo '<div class="form-group"><label>' . htmlspecialchars(__('Localized collection paths'), ENT_QUOTES) . '</label><span class="field-note">' . htmlspecialchars(__('Set the Post and Page list paths used after each language prefix.'), ENT_QUOTES) . '</span>';
+    $submitted = is_array($input['ct_collection_paths'] ?? null) ? $input['ct_collection_paths'] : [];
+    $selected = is_string($input['ct_collection_paths_locale'] ?? null)
+        && in_array($input['ct_collection_paths_locale'], $locales, true)
+        ? $input['ct_collection_paths_locale']
+        : $locales[0];
+    $presets = function_exists('content_locale_presets') ? content_locale_presets() : [];
+    $id = 'ct-collection-paths';
+
+    echo '<div class="ct-collection-paths" id="' . $id . '">';
+    echo '<div class="ct-collection-paths__heading"><strong>' . htmlspecialchars(__('Localized collection paths'), ENT_QUOTES) . '</strong><span class="field-note">' . htmlspecialchars(__('Set the Post and Page list paths used after each language prefix.'), ENT_QUOTES) . '</span></div>';
+    echo '<label class="ct-collection-paths__selector" for="ct-collection-paths-locale">' . htmlspecialchars(__('Language'), ENT_QUOTES) . '<select class="inp inp-w100" id="ct-collection-paths-locale" name="ct_collection_paths_locale" data-unsaved-guard-ignore>';
     foreach ($locales as $locale) {
-        $postPath = (string)($paths[$locale]['posts'] ?? ct_collection_source_path($pdo, 'posts'));
-        $pagePath = (string)($paths[$locale]['pages'] ?? ct_collection_source_path($pdo, 'pages'));
-        echo '<fieldset style="border:0;padding:0;margin:.8rem 0 0"><legend style="font-weight:600">' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</legend>';
-        echo '<label style="display:block;margin-top:.4rem">' . htmlspecialchars(__('Post list path'), ENT_QUOTES) . '<input class="inp inp-w100" name="ct_collection_paths[' . htmlspecialchars($locale, ENT_QUOTES) . '][posts]" value="' . htmlspecialchars($postPath, ENT_QUOTES) . '"></label>';
-        echo '<label style="display:block;margin-top:.6rem">' . htmlspecialchars(__('Page list path'), ENT_QUOTES) . '<input class="inp inp-w100" name="ct_collection_paths[' . htmlspecialchars($locale, ENT_QUOTES) . '][pages]" value="' . htmlspecialchars($pagePath, ENT_QUOTES) . '"></label>';
+        $language = isset($presets[$locale]) ? __((string)$presets[$locale]) . ' (' . $locale . ')' : strtoupper($locale);
+        echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($locale === $selected ? ' selected' : '') . '>' . htmlspecialchars($language, ENT_QUOTES) . '</option>';
+    }
+    echo '</select></label>';
+    foreach ($locales as $locale) {
+        $submittedRow = is_array($submitted[$locale] ?? null) ? $submitted[$locale] : [];
+        $postPath = is_string($submittedRow['posts'] ?? null)
+            ? $submittedRow['posts']
+            : (string)($paths[$locale]['posts'] ?? ct_collection_source_path($pdo, 'posts'));
+        $pagePath = is_string($submittedRow['pages'] ?? null)
+            ? $submittedRow['pages']
+            : (string)($paths[$locale]['pages'] ?? ct_collection_source_path($pdo, 'pages'));
+        $safeLocale = preg_replace('/[^a-zA-Z0-9_-]/', '-', $locale);
+        echo '<fieldset class="ct-collection-paths__pane" data-ct-collection-locale="' . htmlspecialchars($locale, ENT_QUOTES) . '">';
+        echo '<legend class="sr-only">' . htmlspecialchars(strtoupper($locale), ENT_QUOTES) . '</legend>';
+        echo '<label for="ct-collection-posts-' . htmlspecialchars($safeLocale, ENT_QUOTES) . '">' . htmlspecialchars(__('Post list path'), ENT_QUOTES) . '<input class="inp inp-w100" id="ct-collection-posts-' . htmlspecialchars($safeLocale, ENT_QUOTES) . '" name="ct_collection_paths[' . htmlspecialchars($locale, ENT_QUOTES) . '][posts]" value="' . htmlspecialchars($postPath, ENT_QUOTES) . '"></label>';
+        echo '<label for="ct-collection-pages-' . htmlspecialchars($safeLocale, ENT_QUOTES) . '">' . htmlspecialchars(__('Page list path'), ENT_QUOTES) . '<input class="inp inp-w100" id="ct-collection-pages-' . htmlspecialchars($safeLocale, ENT_QUOTES) . '" name="ct_collection_paths[' . htmlspecialchars($locale, ENT_QUOTES) . '][pages]" value="' . htmlspecialchars($pagePath, ENT_QUOTES) . '"></label>';
         echo '</fieldset>';
     }
-    echo '</div>';
-}, 10, 1);
+    echo '</div><script>(function(){var box=document.getElementById(' . json_encode($id) . ');if(!box)return;var select=box.querySelector("#ct-collection-paths-locale");var panes=box.querySelectorAll("[data-ct-collection-locale]");function showLocale(){panes.forEach(function(pane){pane.hidden=pane.dataset.ctCollectionLocale!==select.value})}select.addEventListener("change",showLocale);showLocale()})()</script>';
+}, 10, 2);
 
 add_filter('post_list_status_expression', function ($expression, $context = []) {
     $pdo = $GLOBALS['pdo'] ?? null;
