@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.0 - 2026-09-11
+
+- Add independently configurable Post and Page list paths for each translated locale.
+- Keep localized collection routing, pagination, canonical URLs, hreflang links, and language switching aligned.
+- Require Jyavani Core 2.3.114 for validated collection path filters and locale-aware list bases.
+
 ## 1.14.4 - 2026-09-11
 
 - Keep default-language hreflang and language-switcher URLs canonical when generated from translated post and page overlays.

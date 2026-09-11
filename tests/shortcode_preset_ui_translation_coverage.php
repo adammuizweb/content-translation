@@ -11,6 +11,13 @@ require $root . '/includes/shortcode-presets.php';
 
 $catalog = ct_shortcode_preset_ui_translations();
 $required = [
+    'Localized collection paths',
+    'Set the Post and Page list paths used after each language prefix.',
+    'Post list path',
+    'Page list path',
+    'Localized collection paths are invalid.',
+    'Collection paths may only contain lowercase letters, numbers, slashes, underscores, and hyphens.',
+    'Post and Page list paths must be different in each language.',
     'Shortcodes',
     'Translate Shortcode Preset management titles and localized kicker text without changing query or layout configuration.',
     'Manage Shortcode Presets',

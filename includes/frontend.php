@@ -26,6 +26,44 @@ if (!function_exists('ct_category_index_url')) {
     }
 }
 
+if (!function_exists('ct_collection_request_context')) {
+    function ct_collection_request_context(PDO $pdo): ?array {
+        if (!function_exists('ct_collection_route_path')) return null;
+        $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
+        $locale = content_default_locale();
+        foreach (ct_enabled_locales($pdo) as $candidate) {
+            if ($path === $candidate || str_starts_with($path, $candidate . '/')) {
+                $locale = $candidate;
+                $path = trim(substr($path, strlen($candidate)), '/');
+                break;
+            }
+        }
+        foreach (['posts', 'pages'] as $type) {
+            $base = ct_collection_route_path($pdo, $type, $locale);
+            if ($base === '' || ($path !== $base && !str_starts_with($path, $base . '/'))) continue;
+            $rest = trim(substr($path, strlen($base)), '/');
+            $page = 1;
+            if ($rest !== '' && preg_match('#^(?:p|page)/(\d+)$#', $rest, $matches)) $page = max(1, (int)$matches[1]);
+            return ['type' => $type, 'locale' => $locale, 'page' => $page, 'query' => trim((string)($_GET['q'] ?? ''))];
+        }
+        return null;
+    }
+}
+
+add_filter('posts_list_path', function ($path, $pdo) {
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    return function_exists('ct_collection_route_path') && $pdo instanceof PDO && is_string($locale) && $locale !== ''
+        ? ct_collection_route_path($pdo, 'posts', $locale)
+        : $path;
+}, 10, 2);
+
+add_filter('pages_list_path', function ($path, $pdo) {
+    $locale = $GLOBALS['ct_request_locale'] ?? null;
+    return function_exists('ct_collection_route_path') && $pdo instanceof PDO && is_string($locale) && $locale !== ''
+        ? ct_collection_route_path($pdo, 'pages', $locale)
+        : $path;
+}, 10, 2);
+
 // ─── Routing: strip locale prefix, resolve translated slugs ───
 add_filter('router_path', function ($path) {
     $path = (string)$path;
@@ -74,12 +112,16 @@ add_filter('router_path', function ($path) {
         return '';
     }
 
-    $listRoutes = array_merge(
-        function_exists('get_posts_list_routes') ? get_posts_list_routes($pdo) : ['artikel'],
-        function_exists('get_pages_list_routes') ? get_pages_list_routes($pdo) : ['halaman']
-    );
-    if (function_exists('collection_match_route_base') && collection_match_route_base($rest, $listRoutes) !== null
-        || preg_match('#^(author|\d{4})(?:/|$)#', $rest)) {
+    $localizedCollection = false;
+    if (function_exists('collection_match_route_base') && function_exists('ct_collection_route_path')) {
+        foreach (['posts', 'pages'] as $type) {
+            if (collection_match_route_base($rest, [ct_collection_route_path($pdo, $type, $first)]) !== null) {
+                $localizedCollection = true;
+                break;
+            }
+        }
+    }
+    if ($localizedCollection || preg_match('#^(author|\d{4})(?:/|$)#', $rest)) {
         if (function_exists('set_locale')) set_locale($first);
         $GLOBALS['ct_request_locale'] = $first;
         return $rest;
@@ -684,6 +726,16 @@ add_filter('canonical_url', function ($url) {
         return ct_base_url() . ct_homepage_url($locale);
     }
 
+    if ($pdo instanceof PDO && ($collection = ct_collection_request_context($pdo)) !== null) {
+        return ct_base_url() . ct_collection_url(
+            $pdo,
+            (string)$collection['type'],
+            (string)$collection['locale'],
+            (int)$collection['page'],
+            (string)$collection['query']
+        );
+    }
+
     $category = $GLOBALS['ct_current_category'] ?? null;
     if (is_array($category) && $pdo instanceof PDO && $locale) {
         $context = function_exists('collection_current_route_context') ? collection_current_route_context() : [];
@@ -708,6 +760,18 @@ add_filter('canonical_url', function ($url) {
 add_action('jy_head', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return;
+
+    $collection = ct_collection_request_context($pdo);
+    if ($collection !== null) {
+        $base = ct_base_url();
+        foreach (ct_content_locales($pdo) as $locale) {
+            $href = $base . ct_collection_url($pdo, (string)$collection['type'], $locale, (int)$collection['page'], (string)$collection['query']);
+            echo '<link rel="alternate" hreflang="' . htmlspecialchars($locale, ENT_QUOTES) . '" href="' . htmlspecialchars($href, ENT_QUOTES) . '">' . "\n";
+        }
+        $default = content_default_locale();
+        echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . ct_collection_url($pdo, (string)$collection['type'], $default, (int)$collection['page'], (string)$collection['query']), ENT_QUOTES) . '">' . "\n";
+        return;
+    }
 
     $resource = $GLOBALS['ct_current_theme_file'] ?? null;
     if (!empty($GLOBALS['ct_theme_file_homepage']) && is_array($resource)) {
@@ -856,14 +920,20 @@ if (!function_exists('ct_switcher_html')) {
             }
             return ct_render_switcher_items($items, $title, $style);
         }
-        $listRoutes = array_merge(
-            function_exists('get_posts_list_routes') ? get_posts_list_routes($pdo) : ['artikel'],
-            function_exists('get_pages_list_routes') ? get_pages_list_routes($pdo) : ['halaman']
-        );
-        $isCollection = function_exists('collection_match_route_base')
-            && collection_match_route_base($requestPath, $listRoutes) !== null;
+        $collection = ct_collection_request_context($pdo);
         $isArchive = preg_match('#^\d{4}(?:/\d{2})?(?:/(?:p|page)/\d+)?$#', $requestPath) === 1;
-        if (!is_array($current) && ($isCollection || $isArchive || isset($_GET['s']))) {
+        if (!is_array($current) && $collection !== null) {
+            $items = [];
+            foreach (ct_content_locales($pdo) as $locale) {
+                $items[] = [
+                    'locale' => $locale,
+                    'url' => ct_collection_url($pdo, (string)$collection['type'], $locale, (int)$collection['page'], (string)$collection['query']),
+                    'active' => $currentLocale === $locale,
+                ];
+            }
+            return ct_render_switcher_items($items, $title, $style);
+        }
+        if (!is_array($current) && ($isArchive || isset($_GET['s']))) {
             $items = [['locale' => content_default_locale(), 'url' => $localizedRequestUrl(), 'active' => $currentLocale === content_default_locale()]];
             foreach ($locales as $locale) $items[] = ['locale' => $locale, 'url' => $localizedRequestUrl($locale), 'active' => $currentLocale === $locale];
             return ct_render_switcher_items($items, $title, $style);

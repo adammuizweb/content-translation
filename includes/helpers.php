@@ -406,6 +406,44 @@ if (!function_exists('ct_ensure_schema')) {
         return settings_set($pdo, 'content_translation_locales', json_encode($clean));
     }
 
+    function ct_collection_route_paths(PDO $pdo): array {
+        $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_collection_paths', '') : '';
+        $stored = is_string($raw) ? json_decode($raw, true) : [];
+        if (!is_array($stored)) return [];
+
+        $paths = [];
+        foreach (ct_enabled_locales($pdo) as $locale) {
+            $row = $stored[$locale] ?? null;
+            if (!is_array($row)) continue;
+            foreach (['posts', 'pages'] as $type) {
+                $path = trim((string)($row[$type] ?? ''), '/');
+                if ($path !== '' && preg_match('/^[a-z0-9_\/-]+$/', $path)) $paths[$locale][$type] = $path;
+            }
+        }
+        return $paths;
+    }
+
+    function ct_collection_source_path(PDO $pdo, string $type): string {
+        $key = $type === 'pages' ? 'pages_list_path' : 'posts_list_path';
+        $fallback = $type === 'pages' ? 'halaman' : 'artikel';
+        $path = function_exists('settings_get') ? settings_get($pdo, $key, $fallback) : $fallback;
+        return trim((string)$path, '/');
+    }
+
+    function ct_collection_route_path(PDO $pdo, string $type, string $locale): string {
+        $source = ct_collection_source_path($pdo, $type);
+        if ($locale === content_default_locale()) return $source;
+        return (string)(ct_collection_route_paths($pdo)[$locale][$type] ?? $source);
+    }
+
+    function ct_collection_url(PDO $pdo, string $type, string $locale, int $page = 1, string $query = ''): string {
+        $path = ct_collection_route_path($pdo, $type, $locale);
+        $prefix = $locale === content_default_locale() ? '' : '/' . rawurlencode($locale);
+        $url = $prefix . ($path === '' ? '/' : '/' . $path . '/');
+        if ($page > 1) $url .= 'p/' . $page . '/';
+        return $query !== '' ? $url . '?' . http_build_query(['q' => $query]) : $url;
+    }
+
     function ct_author_locale_preferences(PDO $pdo): array {
         $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_author_locales', '') : '';
         $stored = is_string($raw) ? json_decode($raw, true) : [];

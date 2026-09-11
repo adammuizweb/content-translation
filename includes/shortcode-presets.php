@@ -386,6 +386,13 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
 
     function ct_shortcode_preset_ui_translations(): array {
         return [
+            'Localized collection paths' => ['Path koleksi lokal', 'Lokalisierte Sammlungspfade'],
+            'Set the Post and Page list paths used after each language prefix.' => ['Atur path daftar Post dan Page yang digunakan setelah setiap prefix bahasa.', 'Legen Sie die Pfade für Beitrags- und Seitenlisten nach jedem Sprachpräfix fest.'],
+            'Post list path' => ['Path daftar Post', 'Pfad der Beitragsliste'],
+            'Page list path' => ['Path daftar Page', 'Pfad der Seitenliste'],
+            'Localized collection paths are invalid.' => ['Path koleksi lokal tidak valid.', 'Die lokalisierten Sammlungspfade sind ungültig.'],
+            'Collection paths may only contain lowercase letters, numbers, slashes, underscores, and hyphens.' => ['Path koleksi hanya boleh berisi huruf kecil, angka, garis miring, garis bawah, dan tanda hubung.', 'Sammlungspfade dürfen nur Kleinbuchstaben, Zahlen, Schrägstriche, Unterstriche und Bindestriche enthalten.'],
+            'Post and Page list paths must be different in each language.' => ['Path daftar Post dan Page harus berbeda dalam setiap bahasa.', 'Die Pfade für Beitrags- und Seitenlisten müssen in jeder Sprache unterschiedlich sein.'],
             'Preset heading & translations' => ['Judul preset & terjemahan', 'Preset-Überschrift & Übersetzungen'],
             'Translations' => ['Terjemahan', 'Übersetzungen'],
             'Source heading behavior' => ['Perilaku judul sumber', 'Verhalten der Quellüberschrift'],
