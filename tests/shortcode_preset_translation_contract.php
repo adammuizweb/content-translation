@@ -60,7 +60,7 @@ $check(str_contains($source['editor'], "\$deleteReturnUrl") && str_contains($sou
 $check(str_contains($source['resource'], 'ct_ui_translation_seeds') && str_contains($source['resource'], 'AND value = ?'), 'owned seed updates preserve user-edited translation values');
 $check(str_contains($source['resource'], 'DELETE FROM ui_translations WHERE scope = ? AND source = ? AND locale = ? AND value = ?') && str_contains($source['resource'], 'DELETE FROM ct_ui_translation_seeds WHERE scope = ? AND source_hash = ? AND locale = ?'), 'reseed prunes obsolete ownership and only matching owned UI values');
 $check(str_contains($source['uninstall'], 'INNER JOIN ct_ui_translation_seeds') && str_contains($source['uninstall'], 'owned.value = ui.value'), 'uninstall deletes only unmodified plugin-owned UI seed rows');
-$check(($manifest['version'] ?? '') === '1.14.3' && ($manifest['requires']['jyavani'] ?? '') === '>=2.3.108' && str_contains((string)($manifest['assets']['css'][0] ?? ''), 'v=1.14.3'), 'manifest keeps version/cache key aligned and requires the Core media extension contract');
+$check(($manifest['version'] ?? '') === '1.14.4' && ($manifest['requires']['jyavani'] ?? '') === '>=2.3.108' && str_contains((string)($manifest['assets']['css'][0] ?? ''), 'v=1.14.4'), 'manifest keeps version/cache key aligned and requires the Core media extension contract');
 
 if ($failures !== []) {
     fwrite(STDERR, count($failures) . " assertion(s) failed.\n");

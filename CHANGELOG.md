@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.14.4 - 2026-09-11
+
+- Keep default-language hreflang and language-switcher URLs canonical when generated from translated post and page overlays.
+
 ## 1.14.3 - 2026-09-10
 
 - Default unprofiled media to Core's Content Default Language while retaining the picker locale only as the active metadata view.

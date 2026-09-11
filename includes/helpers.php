@@ -1040,6 +1040,8 @@ if (!function_exists('ct_ensure_schema')) {
     function ct_public_post_url(PDO $pdo, array $post, ?string $locale = null): string {
         $hadLocale = array_key_exists('ct_request_locale', $GLOBALS);
         $previousLocale = $GLOBALS['ct_request_locale'] ?? null;
+        $urlPost = $post;
+        unset($urlPost['ct_locale'], $urlPost['ct_translated_slug']);
         if ($locale === null || $locale === '' || $locale === content_default_locale()) {
             unset($GLOBALS['ct_request_locale']);
         } else {
@@ -1047,11 +1049,11 @@ if (!function_exists('ct_ensure_schema')) {
         }
 
         try {
-            if (($post['type'] ?? '') === 'page' && function_exists('get_page_permalink')) {
-                return get_page_permalink($post);
+            if (($urlPost['type'] ?? '') === 'page' && function_exists('get_page_permalink')) {
+                return get_page_permalink($urlPost);
             }
-            if (function_exists('get_post_permalink')) return get_post_permalink($post);
-            $slug = (string)($post['slug'] ?? '');
+            if (function_exists('get_post_permalink')) return get_post_permalink($urlPost);
+            $slug = (string)($urlPost['slug'] ?? '');
             return ct_post_url($slug, $locale);
         } finally {
             if ($hadLocale) {
