@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.2 - 2026-09-12
+
+- Synchronize the metadata language selector and editor pane when the original metadata language changes.
+- Keep original Core metadata separate from alternate translation drafts during source-language reclassification.
+- Limit source metadata language choices to locales the current editor can modify.
+
 ## 1.15.1 - 2026-09-11
 
 - Place localized collection paths directly below the Core Post and Page list settings.

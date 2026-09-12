@@ -98,6 +98,12 @@ $check(str_contains($files['media'], 'ct-media-metadata-slot')
     && str_contains($files['media'], 'input.disabled=all')
     && str_contains($files['media'], 'input.checked=all||selected.has(input.value)'),
     'media details share one locale-switched metadata form and represent all-locale availability as checked disabled controls');
+$check(str_contains($files['media'], '-source-locale" name="media_extension[content-translation][metadata_source_locale]')
+    && str_contains($files['media'], 'sourceSelect.addEventListener("change"')
+    && str_contains($files['media'], 'sourceLocale=sourceSelect.value;renderSource()')
+    && str_contains($files['media'], 'var sourceRow=rows[sourceLocale]||{}')
+    && str_contains($files['media'], 'data.set(field,String(sourceRow[field]||""))'),
+    'changing the metadata source synchronizes the language pane without replacing original metadata with a translation draft');
 $check(substr_count($files['media'], "\$profile['metadata_source_locale'] ?? content_default_locale()") === 2
     && !str_contains($files['media'], "\$profile['metadata_source_locale'] ?? \$context['content_locale']")
     && str_contains($files['media'], "\$target = trim((string)(\$context['content_locale'] ?? ''))"),
