@@ -112,6 +112,12 @@ add_filter('router_path', function ($path) {
         return '';
     }
 
+    if ($rest === 'media' || str_starts_with($rest, 'media/')) {
+        if (function_exists('set_locale')) set_locale($first);
+        $GLOBALS['ct_request_locale'] = $first;
+        return $rest;
+    }
+
     $localizedCollection = false;
     if (function_exists('collection_match_route_base') && function_exists('ct_collection_route_path')) {
         foreach (['posts', 'pages'] as $type) {

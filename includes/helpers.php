@@ -785,6 +785,7 @@ if (!function_exists('ct_ensure_schema')) {
                 'media_profiles' => 'SELECT mp.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_media_profiles mp INNER JOIN media m ON m.id = mp.media_id ORDER BY mp.media_id',
                 'media_available_locales' => 'SELECT * FROM ct_media_available_locales ORDER BY media_id, locale',
                 'media_translations' => 'SELECT mt.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_media_translations mt INNER JOIN media m ON m.id = mt.media_id ORDER BY mt.media_id, mt.locale',
+                'media_aliases' => 'SELECT a.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_media_aliases a INNER JOIN media m ON m.id = a.media_id ORDER BY a.media_id, a.locale',
                 'localized_featured_media' => 'SELECT f.*, m.url AS media_url, m.filename AS media_filename, m.storage_disk AS media_storage_disk, m.storage_path AS media_storage_identity FROM ct_post_featured_media f LEFT JOIN media m ON m.id = f.media_id ORDER BY f.post_id, f.locale, f.role',
             ];
         }
@@ -795,7 +796,7 @@ if (!function_exists('ct_ensure_schema')) {
 
         return [
             'format' => 'jyavani-content-translation-export',
-            'version' => 7,
+            'version' => 8,
             'exported_at' => gmdate('c'),
             'settings' => [
                 'enabled_locales' => ct_enabled_locales($pdo),

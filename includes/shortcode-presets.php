@@ -569,6 +569,20 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'This media translation was changed by another editor. Reload before saving.' => ['Terjemahan media ini diubah oleh editor lain. Muat ulang sebelum menyimpan.', 'Diese Medienübersetzung wurde von einem anderen Bearbeiter geändert. Laden Sie vor dem Speichern neu.'],
             'Translated alt text cannot be empty; use decorative for an intentional empty alt.' => ['Teks alt terjemahan tidak boleh kosong; gunakan dekoratif untuk alt kosong yang disengaja.', 'Übersetzter Alternativtext darf nicht leer sein; verwenden Sie dekorativ für einen beabsichtigten leeren Alternativtext.'],
             'The new source metadata language already has a media translation. Delete that translation first.' => ['Bahasa metadata sumber baru sudah memiliki terjemahan media. Hapus terjemahan tersebut terlebih dahulu.', 'Für die neue Sprache der Quellmetadaten existiert bereits eine Medienübersetzung. Löschen Sie diese zuerst.'],
+            'This pane is locked to the content language. One media file can serve every language; translate only its metadata here.' => ['Panel ini dikunci ke bahasa konten. Satu berkas media dapat digunakan untuk setiap bahasa; terjemahkan hanya metadatanya di sini.', 'Dieser Bereich ist auf die Inhaltssprache festgelegt. Eine Mediendatei kann für jede Sprache verwendet werden; übersetzen Sie hier nur ihre Metadaten.'],
+            'Add the original metadata in this content language. One uploaded file can serve every language.' => ['Tambahkan metadata asli dalam bahasa konten ini. Satu berkas yang diunggah dapat digunakan untuk setiap bahasa.', 'Fügen Sie die Originalmetadaten in dieser Inhaltssprache hinzu. Eine hochgeladene Datei kann für jede Sprache verwendet werden.'],
+            'Ready' => ['Siap', 'Bereit'],
+            'Original metadata fallback' => ['Fallback metadata asli', 'Rückgriff auf Originalmetadaten'],
+            'Draft metadata' => ['Metadata draf', 'Metadatenentwurf'],
+            'Stale metadata' => ['Metadata kedaluwarsa', 'Veraltete Metadaten'],
+            'Unavailable' => ['Tidak tersedia', 'Nicht verfügbar'],
+            'This media is not available for the content language.' => ['Media ini tidak tersedia untuk bahasa konten.', 'Dieses Medium ist für die Inhaltssprache nicht verfügbar.'],
+            'Image URL slug' => ['Slug URL gambar', 'Bild-URL-Slug'],
+            'Optional. This creates a language-specific URL for the same media file; it does not upload or rename the image.' => ['Opsional. Ini membuat URL khusus bahasa untuk berkas media yang sama; gambar tidak diunggah ulang atau diganti namanya.', 'Optional. Dies erstellt eine sprachspezifische URL für dieselbe Mediendatei; das Bild wird weder erneut hochgeladen noch umbenannt.'],
+            'Choose a valid media URL language.' => ['Pilih bahasa URL media yang valid.', 'Wählen Sie eine gültige Sprache für die Medien-URL.'],
+            'This media URL was changed by another editor. Reload before saving.' => ['URL media ini diubah oleh editor lain. Muat ulang sebelum menyimpan.', 'Diese Medien-URL wurde von einem anderen Bearbeiter geändert. Laden Sie vor dem Speichern neu.'],
+            'Media URL slug is too long.' => ['Slug URL media terlalu panjang.', 'Der Slug der Medien-URL ist zu lang.'],
+            'This media URL slug is already in use for that language.' => ['Slug URL media ini sudah digunakan untuk bahasa tersebut.', 'Dieser Slug der Medien-URL wird für diese Sprache bereits verwendet.'],
         ];
     }
 

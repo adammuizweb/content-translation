@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.16.0 - 2026-09-13
+
+- Lock contextual media metadata editing to the active content language while keeping original-language classification read-only.
+- Guide editors to reuse one physical image across languages with review-first selection and visible readiness diagnostics.
+- Use the active translation locale as the source for contextual uploads and preserve source metadata through server-authoritative mutations.
+- Add optional per-language media URL aliases that resolve to the same stable media identity without renaming or duplicating files.
+- Refresh optimistic media state after saves, preserve locale availability for inherited media, and retain stable media IDs on inline images.
+- Require Jyavani Core 2.3.116 for review-mode selection, duplicate detection, extension badges, and refreshed mutation responses.
+
 ## 1.15.2 - 2026-09-12
 
 - Synchronize the metadata language selector and editor pane when the original metadata language changes.

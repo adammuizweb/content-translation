@@ -83,7 +83,7 @@ $featuredRow = $featuredId > 0 && function_exists('media_load_live') ? media_loa
 $selectedFeaturedUrl = $featuredRow && function_exists('media_client_url') ? media_client_url($featuredRow, true) : null;
 $sourceFeatured = $supportsFeatured && function_exists('media_resolve_featured') ? media_resolve_featured($pdo, $post, [
     'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
-    'field' => 'featured', 'content_locale' => $sourceLocale,
+    'field' => 'featured', 'content_locale' => $locale,
 ]) : null;
 $sourcePreviewPost = $post;
 $sourcePreviewPost['display_image'] = is_array($sourceFeatured) ? (string)($sourceFeatured['url'] ?? '') : null;
@@ -96,14 +96,16 @@ $featuredCompatible = $featuredMode !== 'media' || ($featuredRow && media_client
 $pickerBaseUrl = $localizedMediaSupported ? $base . '/admin/modal_img/index.php?embedded=1' : '';
 $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_query([
     'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
-    'field' => 'featured', 'content_locale' => $locale,
+    'field' => 'featured', 'content_locale' => $locale, 'selection_mode' => 'review',
 ]) : '';
+$localeLabel = $localizedMediaSupported ? ct_media_locale_label($locale) : strtoupper($locale);
+$sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLocale) : strtoupper($sourceLocale);
 ?>
 
 <div class="ct-admin ct-editor">
   <div class="ct-header">
     <div>
-      <h2><?= $canEdit && !$isSource ? __('Edit Translation') : __('View Translation') ?> — <?= h(strtoupper($locale)) ?></h2>
+      <h2><?= $canEdit && !$isSource ? __('Edit Translation') : __('View Translation') ?> — <?= h($localeLabel) ?></h2>
       <p class="muted">
         <?= h((string)$post['title']) ?>
         <span class="badge"><?= $post['type'] === 'page' ? __('Page') : ($post['type'] === 'theme' ? __('Theme') : __('Post')) ?></span>
@@ -112,7 +114,7 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
     <div class="ct-header-actions">
       <?php foreach ($locales as $targetLocale): ?>
         <?php if ($targetLocale === $locale) continue; ?>
-        <a class="btn" href="<?= h($base . '/?page=admin/tools/content-translation/edit&post_id=' . $postId . '&locale=' . urlencode($targetLocale) . '&return_to=' . rawurlencode($returnUrl)) ?>"><?= h(strtoupper($targetLocale)) ?></a>
+        <a class="btn" href="<?= h($base . '/?page=admin/tools/content-translation/edit&post_id=' . $postId . '&locale=' . urlencode($targetLocale) . '&return_to=' . rawurlencode($returnUrl)) ?>"><?= h($localizedMediaSupported ? ct_media_locale_label($targetLocale) : strtoupper($targetLocale)) ?></a>
       <?php endforeach; ?>
       <a class="btn" href="<?= h($returnUrl) ?>"><?= __('Back') ?></a>
       <?php if ($isSource && $canEdit): ?><a class="btn btn-primary" href="<?= h($coreEditor) ?>"><?= __('Edit Source') ?></a><?php endif; ?>
@@ -124,7 +126,7 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
 
   <div class="ct-editor-stack">
     <section class="ct-panel ct-translation-panel<?= $isRtl ? ' ct-rtl-editor' : '' ?>" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
-      <h3><?= $isSource ? __('Canonical source') : __('Translation') ?> (<?= h(strtoupper($locale)) ?>)</h3>
+      <h3><?= $isSource ? __('Canonical source') : __('Translation') ?> (<?= h($localeLabel) ?>)</h3>
       <?php if (!$canEdit || $isSource): ?>
         <div class="ct-field"><label><?= __('Title') ?></label><div class="ct-readonly"><?= h((string)$translation['title']) ?></div></div>
         <div class="ct-field"><label><?= __('Slug') ?></label><div class="ct-readonly"><code><?= h((string)$translation['slug']) ?></code></div></div>
@@ -196,7 +198,7 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
     </section>
 
     <details class="ct-panel ct-source-panel">
-      <summary><?= __('Original') ?> (<?= h(strtoupper($sourceLocale)) ?>)</summary>
+      <summary><?= __('Original') ?> (<?= h($sourceLocaleLabel) ?>)</summary>
       <div class="ct-source-panel__body">
         <div class="ct-field">
           <label><?= __('Title') ?></label>
@@ -236,8 +238,8 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
   const form = document.getElementById('ct-form');
   let quill = null;
   let codeMirror = null;
-  const pickerContext = <?= json_encode(['consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-  const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  const pickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inheritedFeaturedPreview = <?= json_encode(['url' => $inheritedFeaturedUrl, 'label' => $inheritedFeaturedUrl ? __('Source thumbnail') : ''], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   let selectedFeaturedPreview = <?= json_encode(['url' => $selectedFeaturedUrl, 'label' => $featuredRow ? (string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '') : '', 'compatible' => $featuredCompatible], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const fullToolbar = [
@@ -285,6 +287,10 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
           maxWidth: '980px'
         }).then(function(detail){
           if (!detail) return;
+          if (detail.extensions?.content_translation?.available === false) {
+            notify('error', <?= json_encode(__('This media is not available for the content language.')) ?>);
+            return;
+          }
           const url = String(detail.protected_url || detail.url || '');
           if (!url) return;
           quill.insertEmbed(range.index, 'image', url, 'user');
@@ -296,6 +302,7 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
             if (detail.alt) image.setAttribute('alt', String(detail.alt));
             if (detail.title) image.setAttribute('title', String(detail.title));
             if (detail.caption) image.setAttribute('data-caption', String(detail.caption));
+            if (Number(detail.id) > 0) image.setAttribute('data-media-id', String(detail.id));
           }, 0);
         }).catch(function(error){ console.warn('[content-translation] media picker failed', error); });
       });

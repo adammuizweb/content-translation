@@ -6,12 +6,14 @@ $files = [
     'plugin' => (string)file_get_contents($root . '/plugin.php'),
     'helpers' => (string)file_get_contents($root . '/includes/helpers.php'),
     'media' => (string)file_get_contents($root . '/includes/media.php'),
+    'frontend' => (string)file_get_contents($root . '/includes/frontend.php'),
     'admin' => (string)file_get_contents($root . '/includes/admin.php'),
     'editor' => (string)file_get_contents($root . '/admin/edit.php'),
     'theme_editor' => (string)file_get_contents($root . '/admin/theme-section-edit.php'),
     'save' => (string)file_get_contents($root . '/admin/api/save.php'),
     'delete' => (string)file_get_contents($root . '/admin/api/delete.php'),
     'migration' => (string)file_get_contents($root . '/migrations/0004-localized-media.php'),
+    'alias_migration' => (string)file_get_contents($root . '/migrations/0005-localized-media-aliases.php'),
     'docs' => (string)file_get_contents($root . '/docs/localized-media.md'),
 ];
 $core = getenv('CORE_ROOT') ?: (getenv('JY_ROOT') ?: dirname(__DIR__, 3) . '/jyavani.lan');
@@ -23,8 +25,9 @@ $check = static function (bool $condition, string $message) use (&$failures, &$c
     if (!$condition) $failures[] = $message;
 };
 
-foreach (['ct_media_profiles', 'ct_media_available_locales', 'ct_media_translations', 'ct_post_featured_media'] as $table) {
-    $check(str_contains($files['migration'], 'CREATE TABLE IF NOT EXISTS ' . $table)
+foreach (['ct_media_profiles', 'ct_media_available_locales', 'ct_media_translations', 'ct_post_featured_media', 'ct_media_aliases'] as $table) {
+    $migrationSource = $table === 'ct_media_aliases' ? $files['alias_migration'] : $files['migration'];
+    $check(str_contains($migrationSource, 'CREATE TABLE IF NOT EXISTS ' . $table)
         && str_contains($files['helpers'], 'ct_ensure_media_schema'), $table . ' has append-only migration and runtime schema coverage');
 }
 $check(str_contains($files['migration'], "ENUM('inherit','text','decorative')")
@@ -33,9 +36,20 @@ $check(str_contains($files['migration'], "ENUM('inherit','text','decorative')")
     'schema and validation preserve explicit alt and availability states');
 $migrationNames = array_map('basename', glob($root . '/migrations/*') ?: []);
 sort($migrationNames);
-$check($migrationNames === ['0001-post-workflows.sql', '0002-migrate-authored-posts.php', '0003-locale-edit-grants.php', '0004-localized-media.php']
+$check($migrationNames === ['0001-post-workflows.sql', '0002-migrate-authored-posts.php', '0003-locale-edit-grants.php', '0004-localized-media.php', '0005-localized-media-aliases.php']
     && str_contains($files['migration'], 'return static function (PDO $pdo): void'),
     'localized media is appended as canonical migration 0004 without replacing migration history');
+$check(str_contains($files['media'], 'ct_media_alias_slug')
+    && str_contains($files['media'], 'ct_media_alias_state')
+    && str_contains($files['media'], 'media_alias_slug')
+    && str_contains($files['helpers'], "'media_aliases'")
+    && str_contains($files['plugin'], "'ct_media_aliases'"),
+    'localized URL aliases are optimistic plugin-owned state covered by export and uninstall');
+$check(str_contains($files['plugin'], "register_frontend_route('media'")
+    && str_contains($files['plugin'], 'ct_media_is_available')
+    && str_contains($files['frontend'], "str_starts_with(\$rest, 'media/')")
+    && str_contains($files['media'], 'ct_media_alias_url'),
+    'localized media aliases resolve only live public locale-available media through the plugin route');
 $check(str_contains($files['media'], "add_action('media_admin_upload_fields'")
     && str_contains($files['media'], "add_action('media_admin_detail_before_fields'")
     && str_contains($files['media'], "add_action('media_admin_detail_after_fields'"),
@@ -62,17 +76,29 @@ $check(str_contains($files['media'], "add_filter('media_data'")
     && str_contains($files['media'], 'source_fingerprint')
     && str_contains($files['media'], "'decorative' => ''"),
     'runtime overlays only current published metadata and preserves decorative empty alt');
+$check(str_contains($files['media'], "'source_fallback'")
+    && str_contains($files['media'], "'draft' => __('Draft metadata')")
+    && str_contains($files['media'], "'stale' => __('Stale metadata')")
+    && str_contains($files['media'], "'unavailable' => __('Unavailable')")
+    && str_contains($files['media'], "'state_label' =>"),
+    'picker media data exposes all localized, user-facing diagnostic states');
+$check(str_contains($files['media'], "add_filter('media_admin_list_badges'")
+    && str_contains($files['media'], "['label' => \$label, 'tone' => \$state]"),
+    'contextual picker cards expose localized metadata readiness as a visible badge');
 $check(str_contains($files['media'], "add_filter('featured_media'")
     && str_contains($files['media'], 'media_load_live') && str_contains($files['media'], 'media_client_url')
     && str_contains($files['media'], "mode'] === 'none'"),
     'localized featured inherit/media/none resolution uses Core live and public helpers');
 $check(str_contains($files['editor'], 'media_picker_query')
     && str_contains($files['editor'], "'content_locale' => \$locale")
+    && substr_count($files['editor'], "'selection_mode' => 'review'") >= 2
     && str_contains($files['editor'], 'featured_alt_override_enabled')
     && str_contains($files['editor'], 'YouTube remains the first display-image source'),
     'post/page editor sends explicit picker context, supports nullable overrides, and states YouTube precedence');
 $check(str_contains($files['editor'], "\$post['type'] === 'page' ? 'page' : 'post'")
-    && str_contains($files['editor'], 'detail.extensions?.content_translation?.available'),
+    && str_contains($files['editor'], 'detail.extensions?.content_translation?.available')
+    && str_contains($files['editor'], "image.setAttribute('data-media-id'")
+    && str_contains($files['editor'], 'This media is not available for the content language.'),
     'picker validates page/post consumers and immediately consumes locale availability diagnostics');
 $check(str_contains($files['editor'], 'media_resolve_featured')
     && str_contains($files['editor'], 'media_post_display_url')
@@ -104,10 +130,24 @@ $check(str_contains($files['media'], '-source-locale" name="media_extension[cont
     && str_contains($files['media'], 'var sourceRow=rows[sourceLocale]||{}')
     && str_contains($files['media'], 'data.set(field,String(sourceRow[field]||""))'),
     'changing the metadata source synchronizes the language pane without replacing original metadata with a translation draft');
-$check(substr_count($files['media'], "\$profile['metadata_source_locale'] ?? content_default_locale()") === 2
-    && !str_contains($files['media'], "\$profile['metadata_source_locale'] ?? \$context['content_locale']")
-    && str_contains($files['media'], "\$target = trim((string)(\$context['content_locale'] ?? ''))"),
-    'new media profiles derive their source from Content Default Language while picker context selects only the active metadata view');
+$check(str_contains($files['media'], 'ct_media_translation_context')
+    && str_contains($files['media'], "\$profile['metadata_source_locale'] ?? \$contextLocale ?? content_default_locale()")
+    && str_contains($files['media'], "\$fields['metadata_source_locale'] = \$contextLocale")
+    && str_contains($files['media'], "foreach (['metadata_source_locale', 'availability_policy', 'available_locales', 'profile_state'] as \$key) unset"),
+    'contextual uploads use the content locale while contextual updates cannot reclassify source or availability');
+$check(str_contains($files['media'], "\$metadata['core_fields']")
+    && str_contains($files['media'], "(string)(\$row[\$field] ?? '')"),
+    'contextual target mutations preserve source metadata through a server-authoritative Core override');
+$check(str_contains($files['media'], 'This pane is locked to the content language.')
+    && str_contains($files['media'], 'One uploaded file can serve every language.')
+    && str_contains($files['media'], 'ct_media_locale_label')
+    && str_contains($files['media'], "if (\$contextLocale !== null)"),
+    'contextual details lock and name the working language while standalone controls remain available');
+$check(str_contains($files['media'], "add_filter('media_mutation_response'")
+    && str_contains($files['media'], "'profile_state' => ct_media_profile_state")
+    && str_contains($files['media'], "'translation_state' =>")
+    && substr_count($files['media'], 'document.addEventListener("media:updated"') >= 1,
+    'mutation responses and active contextual forms exchange refreshed optimistic tokens');
 $check(str_contains($files['helpers'], 'ct_translation_editor_state($current, $currentFeatured)')
     && str_contains($files['helpers'], 'ct_save_featured_selection')
     && strpos($files['helpers'], 'ct_save_featured_selection') < strpos($files['helpers'], 'if ($ownsTransaction) $pdo->commit()', strpos($files['helpers'], 'function ct_save_translation_locked')),
@@ -121,10 +161,10 @@ $check(str_contains($files['media'], 'p.is_deleted = 0')
     && str_contains($files['media'], "translation']['operation'] ?? 'save') === 'delete'"),
     'purge removes deleted-post and null media selections and detail saves support translation deletion');
 $check(str_contains($files['admin'], 'localized media state could not be verified')
-    && str_contains($files['helpers'], "'version' => 7")
+    && str_contains($files['helpers'], "'version' => 8")
     && str_contains($files['helpers'], "'media_profiles'")
     && str_contains($files['plugin'], "'ct_media_profiles'"),
-    'default-locale preflight fails closed and export v7/uninstall cover all media state');
+    'default-locale preflight fails closed and export v8/uninstall cover all media state');
 $check(str_contains($files['plugin'], 'ct_localized_media_state_exists')
     && str_contains($files['plugin'], 'Content Translation state could not be verified.')
     && !str_contains($files['plugin'], 'ct_ensure_media_schema($pdo)'),

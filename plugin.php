@@ -14,6 +14,34 @@ require_once $__ct_dir . '/includes/admin.php';
 
 unset($__ct_dir);
 
+if (function_exists('register_frontend_route')) {
+    register_frontend_route('media', static function (PDO $pdo): void {
+        $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
+        $segments = $path === '' ? [] : explode('/', rawurldecode($path));
+        $locale = content_default_locale();
+        if (isset($segments[0]) && in_array($segments[0], ct_enabled_locales($pdo), true)) $locale = array_shift($segments);
+        if (($segments[0] ?? '') !== 'media' || count($segments) !== 2) {
+            http_response_code(404);
+            return;
+        }
+        $slug = ct_media_alias_slug((string)$segments[1]);
+        if ($slug === '' || $slug !== (string)$segments[1]) {
+            http_response_code(404);
+            return;
+        }
+        $stmt = $pdo->prepare('SELECT m.* FROM ct_media_aliases a INNER JOIN media m ON m.id = a.media_id WHERE a.locale = ? AND a.slug = ? AND m.is_deleted = 0 LIMIT 1');
+        $stmt->execute([$locale, $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $url = is_array($row) && ct_media_is_available($pdo, (int)$row['id'], $locale) ? media_client_url($row, false) : null;
+        if ($url === null) {
+            http_response_code(404);
+            return;
+        }
+        header('Location: ' . $url, true, 301);
+        header('Cache-Control: public, max-age=3600');
+    }, ['match' => 'prefix', 'methods' => ['GET'], 'priority' => 10]);
+}
+
 add_action('theme_zone_item_before_delete', function (int $itemId, PDO $pdo): void {
     if ($itemId <= 0) return;
     ct_ensure_schema($pdo);
@@ -70,6 +98,7 @@ add_action('plugin_uninstall', function (string $name): void {
         'ct_user_locale_edit_grants',
         'ct_role_locale_edit_grants',
         'ct_post_featured_media',
+        'ct_media_aliases',
         'ct_media_translations',
         'ct_media_available_locales',
         'ct_media_profiles',
