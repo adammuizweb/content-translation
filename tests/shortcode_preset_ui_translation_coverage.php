@@ -48,6 +48,7 @@ $required = [
     'Inherit source thumbnail',
     'Choose media for this locale',
     'No thumbnail',
+    'No image selected',
     'Open media picker',
     'File selector is unavailable.',
     'Complex HTML detected. CodeMirror preserves the source markup.',

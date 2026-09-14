@@ -171,9 +171,9 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
           <label><input type="radio" name="featured_mode" value="media"<?= $featuredMode === 'media' ? ' checked' : '' ?>> <?= __('Choose media for this locale') ?></label>
           <label><input type="radio" name="featured_mode" value="none"<?= $featuredMode === 'none' ? ' checked' : '' ?>> <?= __('No thumbnail') ?></label>
           <input type="hidden" id="ct-featured-media-id" name="featured_media_id" value="<?= $featuredId ?: '' ?>">
-          <div class="ct-featured-preview" id="ct-featured-preview"<?= $featuredUrl ? '' : ' hidden' ?>>
+          <div class="ct-featured-preview<?= $featuredUrl ? '' : ' is-empty' ?>" id="ct-featured-preview">
             <?php if ($featuredUrl): ?><img src="<?= h($featuredUrl) ?>" alt=""><?php endif; ?>
-            <span><?= h($featuredLabel) ?></span>
+            <span><?= h($featuredUrl ? $featuredLabel : __('No image selected')) ?></span>
           </div>
           <button type="button" class="btn" id="ct-featured-choose"><?= __('Open media picker') ?></button>
           <p id="ct-featured-warning" class="ct-featured-warning"<?= $featuredCompatible ? ' hidden' : '' ?>><?= __('This media is unavailable, private, or deleted for the selected locale. It may remain in a draft but cannot be published.') ?></p>
@@ -249,6 +249,7 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
   const pickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inheritedFeaturedPreview = <?= json_encode(['url' => $inheritedFeaturedUrl, 'label' => $inheritedFeaturedUrl ? __('Source thumbnail') : ''], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  const emptyFeaturedLabel = <?= json_encode(__('No image selected'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   let selectedFeaturedPreview = <?= json_encode(['url' => $selectedFeaturedUrl, 'label' => $featuredRow ? (string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '') : '', 'compatible' => $featuredCompatible], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const fullToolbar = [
     [{ header: [1, 2, 3, 4, 5, 6, false] }],
@@ -388,8 +389,9 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
     const state = mode === 'inherit' ? inheritedFeaturedPreview : (mode === 'media' ? selectedFeaturedPreview : null);
     let image = preview.querySelector('img');
     if (!state || !state.url) {
-      if (image) image.removeAttribute('src');
-      preview.hidden = true;
+      if (image) image.remove();
+      preview.classList.add('is-empty');
+      preview.querySelector('span').textContent = emptyFeaturedLabel;
     } else {
       if (!image) {
         image = document.createElement('img');
@@ -398,7 +400,7 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
       }
       image.src = state.url;
       preview.querySelector('span').textContent = state.label || '';
-      preview.hidden = false;
+      preview.classList.remove('is-empty');
     }
     const warning = document.getElementById('ct-featured-warning');
     if (warning) warning.hidden = mode !== 'media' || selectedFeaturedPreview.compatible !== false;

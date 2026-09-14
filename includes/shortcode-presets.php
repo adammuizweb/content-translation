@@ -546,6 +546,7 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'Inherit source thumbnail' => ['Warisi gambar mini sumber', 'Quell-Vorschaubild übernehmen'],
             'Choose media for this locale' => ['Pilih media untuk bahasa ini', 'Medien für diese Sprache auswählen'],
             'No thumbnail' => ['Tanpa gambar mini', 'Kein Vorschaubild'],
+            'No image selected' => ['Belum ada gambar dipilih', 'Kein Bild ausgewählt'],
             'Open media picker' => ['Buka pemilih media', 'Medienauswahl öffnen'],
             'File selector is unavailable.' => ['Pemilih file tidak tersedia.', 'Die Dateiauswahl ist nicht verfügbar.'],
             'Complex HTML detected. CodeMirror preserves the source markup.' => ['HTML kompleks terdeteksi. CodeMirror mempertahankan markup sumber.', 'Komplexes HTML erkannt. CodeMirror erhält das Quell-Markup.'],

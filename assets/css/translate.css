@@ -187,6 +187,7 @@
 .ct-media-translation-controls .btn, .ct-media-translation-controls .muted { align-self:end; margin:0; }
 .ct-featured-preview { display:flex; align-items:center; gap:.7rem; padding:.55rem; background:rgba(127,127,127,.07); border-radius:7px; }
 .ct-featured-preview img { width:88px; height:58px; object-fit:cover; border-radius:5px; }
+.ct-featured-preview.is-empty { min-height:58px; justify-content:center; border:1px dashed rgba(127,127,127,.35); color:var(--adam-muted,#6b7280); }
 .ct-featured-warning { margin:0; color:#b45309; font-weight:600; }
 .ct-source-panel { min-width: 0; }
 .ct-source-panel summary {

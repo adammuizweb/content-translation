@@ -114,8 +114,10 @@ $check(str_contains($files['editor'], 'media_resolve_featured')
     && str_contains($files['editor'], 'media_post_display_url')
     && str_contains($files['editor'], '<?php if ($featuredUrl): ?>')
     && str_contains($files['editor'], 'renderFeaturedPreview')
-    && str_contains($files['editor'], "image.removeAttribute('src')"),
-    'translation editor previews inherited source media without emitting an empty image URL');
+    && str_contains($files['editor'], 'emptyFeaturedLabel')
+    && str_contains($files['editor'], 'if (image) image.remove()')
+    && !str_contains($files['editor'], "image.removeAttribute('src')"),
+    'translation editor replaces an absent inherited or selected image with a placeholder instead of an empty image URL');
 $check(str_contains($files['editor'], 'pattern="[a-zA-Z0-9_\\/\\-]*"')
     && str_contains($files['theme_editor'], 'pattern="[a-zA-Z0-9_\\/\\-]*"')
     && !str_contains($files['editor'] . $files['theme_editor'], 'pattern="[a-zA-Z0-9_\\-/]*"'),

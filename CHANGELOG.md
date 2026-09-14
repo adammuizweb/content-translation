@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.3 - 2026-09-14
+
+- Replace an absent localized featured-media image with a translated empty-state placeholder instead of rendering a broken image.
+
 ## 1.16.2 - 2026-09-14
 
 - Keep localized featured-media previews anchored to the post's actual source language.
