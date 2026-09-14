@@ -2,8 +2,22 @@
 declare(strict_types=1);
 
 $core = getenv('CORE_ROOT') ?: (getenv('JY_ROOT') ?: dirname(__DIR__, 3) . '/jyavani.lan');
+$publicFixture = sys_get_temp_dir() . '/ct-media-public-' . bin2hex(random_bytes(8));
+mkdir($publicFixture . '/static/img', 0770, true);
+define('PUBLIC_PATH', $publicFixture);
+$png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
+file_put_contents($publicFixture . '/static/img/one.png', $png);
+file_put_contents($publicFixture . '/static/img/two.png', $png);
+register_shutdown_function(static function () use ($publicFixture): void {
+    @unlink($publicFixture . '/static/img/one.png');
+    @unlink($publicFixture . '/static/img/two.png');
+    @rmdir($publicFixture . '/static/img');
+    @rmdir($publicFixture . '/static');
+    @rmdir($publicFixture);
+});
 require_once $core . '/cfg/helpers/hooks.php';
 require_once $core . '/cfg/helpers/resource_lifecycle.php';
+require_once $core . '/cfg/helpers/asset_lifecycle.php';
 require_once $core . '/cfg/helpers/media_helpers.php';
 
 function content_default_locale(): string { return 'en'; }
@@ -37,7 +51,7 @@ $pdo->exec('CREATE TABLE ct_media_aliases (media_id INTEGER, locale TEXT, slug T
 $pdo->exec('CREATE TABLE ct_post_featured_media (post_id INTEGER, locale TEXT, role TEXT, mode TEXT, media_id INTEGER NULL, alt_override TEXT NULL, caption_override TEXT NULL, source_fingerprint TEXT, updated_by INTEGER, created_at TEXT, updated_at TEXT, PRIMARY KEY(post_id, locale, role))');
 $pdo->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, is_deleted INTEGER)');
 $pdo->exec('CREATE TABLE post_translations (post_id INTEGER, locale TEXT, status TEXT)');
-$pdo->exec("INSERT INTO media VALUES (1, '/media/one.jpg', 'one.jpg', 'image/jpeg', 'jpg', 1, 10, 10, 'Asli', 'Alt asli', 'Caption asli', 'Credit asli', NULL, NULL, 'public', 'public', 'one.jpg', 'public', 1, 1, 0)");
+$pdo->exec("INSERT INTO media VALUES (1, '/media/one.jpg', 'one.jpg', 'image/jpeg', 'jpg', 1, 10, 10, 'Asli', 'Alt asli', 'Caption asli', 'Credit asli', NULL, NULL, 'public', 'public', 'one.png', 'public', 1, 1, 0)");
 $row = media_load_live($pdo, 1);
 $fingerprint = ct_media_source_fingerprint($row);
 $pdo->prepare("INSERT INTO ct_media_profiles VALUES (1, 'id', 'all', ?, 1, 1, NULL, NULL)")->execute([$fingerprint]);
@@ -123,7 +137,7 @@ $check(in_array('id', $grantLocales, true) && in_array('en', $grantLocales, true
     && array_filter($GLOBALS['ct_test_grants'], static fn(array $grant): bool => $grant[1]) !== [],
     'source reclassification reauthorizes old source, new source, and target locale under transaction locks');
 
-$pdo->exec("INSERT INTO media VALUES (2, '/media/two.jpg', 'two.jpg', 'image/jpeg', 'jpg', 1, 10, 10, 'Deutsch', 'Alt', '', '', NULL, NULL, 'public', 'public', 'two.jpg', 'public', 1, 1, 0)");
+$pdo->exec("INSERT INTO media VALUES (2, '/media/two.jpg', 'two.jpg', 'image/jpeg', 'jpg', 1, 10, 10, 'Deutsch', 'Alt', '', '', NULL, NULL, 'public', 'public', 'two.png', 'public', 1, 1, 0)");
 $newRow = media_load_live($pdo, 2);
 $GLOBALS['ct_test_grants'] = [];
 $pdo->beginTransaction();
@@ -166,6 +180,30 @@ $check((ct_media_alias($pdo, 2, 'id')['slug'] ?? '') === 'perpustakaan-kampus'
     && ($aliasProjection['extensions']['content_translation']['permalink'] ?? '') === $aliasProjection['url'],
     'localized media alias keeps one media identity while projecting a language-specific URL');
 $pdo->rollBack();
+
+$unmanagedAliasRejected = false;
+try {
+    ct_media_mutation_payload($pdo, $aliasFields, [], array_replace($newRow, ['storage_path' => 'missing.png']), [
+        'profile' => ct_media_profile($pdo, 2), 'available_locales' => [], 'translations' => [], 'aliases' => [],
+    ]);
+} catch (InvalidArgumentException $error) {
+    $unmanagedAliasRejected = str_contains($error->getMessage(), 'locally managed public image');
+}
+$check($unmanagedAliasRejected, 'media aliases reject external, missing, or otherwise unmanaged public images');
+$unavailableAliasRejected = false;
+try {
+    ct_media_mutation_payload($pdo, $aliasFields, [], $newRow, [
+        'profile' => array_replace(ct_media_profile($pdo, 2), ['availability_policy' => 'selected']),
+        'available_locales' => [], 'translations' => [], 'aliases' => [],
+    ]);
+} catch (InvalidArgumentException $error) {
+    $unavailableAliasRejected = str_contains($error->getMessage(), 'available in that language');
+}
+$check($unavailableAliasRejected, 'new media aliases require effective availability in their language');
+$legacyExternal = array_replace($newRow, ['url' => 'https://cdn.example/image.png', 'storage_path' => 'missing.png']);
+$check(ct_media_legacy_alias_redirect_url($legacyExternal) === 'https://cdn.example/image.png'
+    && ct_media_legacy_alias_redirect_url(array_replace($legacyExternal, ['url' => '/static/img/missing.png'])) === null,
+    'legacy compatibility redirects only absolute public HTTP media and never unresolved local paths');
 
 $standaloneResponse = media_mutation_response($pdo, 'update', $newRow, ['surface' => 'admin.media.detail'], [], [
     'content_translation' => ['translation' => ['locale' => 'id']],

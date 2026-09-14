@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.1 - 2026-09-14
+
+- Serve localized media aliases as cacheable image responses from one contained public file instead of redirecting to the original filename.
+- Support GET, HEAD, conditional requests, and byte ranges through the Core 2.3.121 public media response contract.
+- Reject aliases for private, external, missing, symlink-backed, or otherwise unmanaged media.
+
 ## 1.16.0 - 2026-09-13
 
 - Lock contextual media metadata editing to the active content language while keeping original-language classification read-only.

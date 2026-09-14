@@ -47,9 +47,13 @@ $check(str_contains($files['media'], 'ct_media_alias_slug')
     'localized URL aliases are optimistic plugin-owned state covered by export and uninstall');
 $check(str_contains($files['plugin'], "register_frontend_route('media'")
     && str_contains($files['plugin'], 'ct_media_is_available')
+    && str_contains($files['plugin'], 'media_serve_public_file($row)')
+    && str_contains($files['plugin'], "'methods' => ['GET', 'HEAD']")
+    && str_contains($files['plugin'], 'ct_media_legacy_alias_redirect_url($row)')
     && str_contains($files['frontend'], "str_starts_with(\$rest, 'media/')")
-    && str_contains($files['media'], 'ct_media_alias_url'),
-    'localized media aliases resolve only live public locale-available media through the plugin route');
+    && str_contains($files['media'], 'ct_media_alias_url')
+    && str_contains($files['media'], 'media_public_file_descriptor($row)'),
+    'localized media aliases serve managed files with HTTP 200 while preserving legacy external redirects');
 $check(str_contains($files['media'], "add_action('media_admin_upload_fields'")
     && str_contains($files['media'], "add_action('media_admin_detail_before_fields'")
     && str_contains($files['media'], "add_action('media_admin_detail_after_fields'"),

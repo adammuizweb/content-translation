@@ -4,7 +4,7 @@ declare(strict_types=1);
 function ct_localized_media_supported(): bool {
     foreach (['media_extension_context', 'media_extension_input', 'media_picker_query', 'media_load_live', 'media_client_url',
         'media_filter_data', 'media_public_extensions', 'media_create_before_publication', 'media_mutation_response',
-        'media_admin_list_badges', 'media_post_image_alt'] as $function) {
+        'media_admin_list_badges', 'media_public_file_descriptor', 'media_serve_public_file', 'media_post_image_alt'] as $function) {
         if (!function_exists($function)) return false;
     }
     return class_exists('ResourceLifecycleDatabase');
@@ -120,6 +120,12 @@ function ct_media_alias_slug(string $value): string {
 function ct_media_alias_url(string $locale, string $slug): string {
     $prefix = $locale === content_default_locale() ? '' : '/' . rawurlencode($locale);
     return $prefix . '/media/' . rawurlencode($slug) . '/';
+}
+
+function ct_media_legacy_alias_redirect_url(array $row): ?string {
+    $url = media_client_url($row, false);
+    $scheme = is_string($url) ? strtolower((string)parse_url($url, PHP_URL_SCHEME)) : '';
+    return in_array($scheme, ['http', 'https'], true) ? $url : null;
 }
 
 function ct_media_profile_state(?array $profile, array $availableLocales): string {
@@ -280,6 +286,15 @@ function ct_media_mutation_payload(PDO $pdo, array $fields, array $context, arra
         }
         $slug = ct_media_alias_slug((string)($fields['media_alias_slug'] ?? ''));
         if (strlen($slug) > 191) throw new InvalidArgumentException('Media URL slug is too long.');
+        $availableForAlias = $hasProfileInput
+            ? ($policy === 'all' || in_array($aliasLocale, $selected, true))
+            : ((string)($currentProfile['availability_policy'] ?? '') === 'all'
+                || in_array($aliasLocale, (array)($lockedState['available_locales'] ?? []), true));
+        if ($slug !== '' && !$availableForAlias) throw new InvalidArgumentException('Media URL aliases require media available in that language.');
+        $sameLegacyAlias = is_array($currentAlias) && hash_equals((string)$currentAlias['slug'], $slug);
+        if ($slug !== '' && !$sameLegacyAlias && media_public_file_descriptor($row) === null) {
+            throw new InvalidArgumentException('Media URL aliases require a locally managed public image.');
+        }
         $payload['alias'] = ['locale' => $aliasLocale, 'slug' => $slug, 'operation' => $slug === '' ? 'delete' : 'save'];
     }
     return $payload;
@@ -458,7 +473,7 @@ add_filter('media_data', function (array $data, array $row, array $context, PDO 
         'metadata_source_language' => $profile ? ct_media_locale_label((string)$profile['metadata_source_locale']) : null,
     ];
     $alias = ct_media_alias($pdo, $mediaId, $locale);
-    if ($available && $alias && media_client_url($row, false) !== null) {
+    if ($available && $alias && (media_public_file_descriptor($row) !== null || ct_media_legacy_alias_redirect_url($row) !== null)) {
         $data['url'] = ct_media_alias_url($locale, (string)$alias['slug']);
         $data['extensions']['content_translation']['slug'] = (string)$alias['slug'];
         $data['extensions']['content_translation']['permalink'] = $data['url'];

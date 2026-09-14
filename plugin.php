@@ -14,12 +14,14 @@ require_once $__ct_dir . '/includes/admin.php';
 
 unset($__ct_dir);
 
-if (function_exists('register_frontend_route')) {
+if (function_exists('register_frontend_route') && function_exists('media_serve_public_file')) {
     register_frontend_route('media', static function (PDO $pdo): void {
         $path = trim((string)(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? ''), '/');
         $segments = $path === '' ? [] : explode('/', rawurldecode($path));
-        $locale = content_default_locale();
-        if (isset($segments[0]) && in_array($segments[0], ct_enabled_locales($pdo), true)) $locale = array_shift($segments);
+        $defaultLocale = content_default_locale();
+        $locale = $defaultLocale;
+        $localePrefixed = isset($segments[0]) && in_array($segments[0], ct_enabled_locales($pdo), true);
+        if ($localePrefixed) $locale = array_shift($segments);
         if (($segments[0] ?? '') !== 'media' || count($segments) !== 2) {
             http_response_code(404);
             return;
@@ -29,17 +31,25 @@ if (function_exists('register_frontend_route')) {
             http_response_code(404);
             return;
         }
+        if ($localePrefixed && $locale === $defaultLocale) {
+            header('Location: ' . ct_media_alias_url($defaultLocale, $slug), true, 301);
+            return;
+        }
         $stmt = $pdo->prepare('SELECT m.* FROM ct_media_aliases a INNER JOIN media m ON m.id = a.media_id WHERE a.locale = ? AND a.slug = ? AND m.is_deleted = 0 LIMIT 1');
         $stmt->execute([$locale, $slug]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $url = is_array($row) && ct_media_is_available($pdo, (int)$row['id'], $locale) ? media_client_url($row, false) : null;
-        if ($url === null) {
+        if (!is_array($row) || !ct_media_is_available($pdo, (int)$row['id'], $locale)) {
             http_response_code(404);
             return;
         }
-        header('Location: ' . $url, true, 301);
-        header('Cache-Control: public, max-age=3600');
-    }, ['match' => 'prefix', 'methods' => ['GET'], 'priority' => 10]);
+        if (media_public_file_descriptor($row) !== null) {
+            if (!media_serve_public_file($row)) http_response_code(404);
+            return;
+        }
+        $legacyUrl = ct_media_legacy_alias_redirect_url($row);
+        if ($legacyUrl !== null) header('Location: ' . $legacyUrl, true, 301);
+        else http_response_code(404);
+    }, ['match' => 'prefix', 'methods' => ['GET', 'HEAD'], 'priority' => 10]);
 }
 
 add_action('theme_zone_item_before_delete', function (int $itemId, PDO $pdo): void {

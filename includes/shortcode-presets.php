@@ -583,6 +583,8 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'This media URL was changed by another editor. Reload before saving.' => ['URL media ini diubah oleh editor lain. Muat ulang sebelum menyimpan.', 'Diese Medien-URL wurde von einem anderen Bearbeiter geändert. Laden Sie vor dem Speichern neu.'],
             'Media URL slug is too long.' => ['Slug URL media terlalu panjang.', 'Der Slug der Medien-URL ist zu lang.'],
             'This media URL slug is already in use for that language.' => ['Slug URL media ini sudah digunakan untuk bahasa tersebut.', 'Dieser Slug der Medien-URL wird für diese Sprache bereits verwendet.'],
+            'Media URL aliases require a locally managed public image.' => ['Alias URL media memerlukan gambar publik yang dikelola secara lokal.', 'Medien-URL-Aliase erfordern ein lokal verwaltetes öffentliches Bild.'],
+            'Media URL aliases require media available in that language.' => ['Alias URL media memerlukan media yang tersedia dalam bahasa tersebut.', 'Medien-URL-Aliase erfordern Medien, die in dieser Sprache verfügbar sind.'],
         ];
     }
 

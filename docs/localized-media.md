@@ -1,6 +1,6 @@
 # Localized Media
 
-Localized media is available in Content Translation 1.14.0. The focused picker workflow and localized URL aliases require Jyavani Core 2.3.116 or newer. Its generic Core media extension contract provides contextual media admin hooks, mutation metadata, resource lifecycle events, `media_data`, `featured_media`, and stable featured-media IDs.
+Localized media is available in Content Translation 1.14.0. Localized URL responses require Jyavani Core 2.3.121 or newer. Its generic Core media extension contract provides contextual media admin hooks, mutation metadata, resource lifecycle events, `media_data`, `featured_media`, and stable featured-media IDs.
 
 ## Metadata model
 
@@ -15,7 +15,7 @@ Localized media is available in Content Translation 1.14.0. The focused picker w
 - A nullable translated field inherits the original value. For alt text, `inherit`, translated `text`, and intentionally empty `decorative` are distinct states.
 - Private, trashed, deleted, and locale-incompatible assets are never rendered as localized featured media.
 - Picker data reports `ready`, `source_fallback`, `draft`, `stale`, or `unavailable`, with a localized badge label and human-readable source/target language names.
-- A contextual editor may assign one optional URL slug per language. These aliases resolve to the same stable `media.id` and redirect to the existing public file; they never rename or duplicate physical media.
+- A contextual editor may assign one optional URL slug per language. These aliases return the same locally managed public image with HTTP 200 through Core while retaining the localized request URL; they never rename or duplicate physical media. Private, external, missing, symlink-backed, and otherwise unmanaged media cannot receive new aliases. Existing 1.16.0 aliases for public external or unmanaged URLs retain their prior redirect behavior until removed or replaced.
 
 ## Featured media
 
@@ -39,4 +39,4 @@ Core's `media_mutation_response` filter is used to append refreshed profile and 
 
 Export format version 8 contains media profiles, selected availability locales, media translations, localized media aliases, localized featured selections, and diagnostic Core media identity. No importer is provided.
 
-Localized-media hooks and post columns remain inactive when the Core media contract is unavailable. The manifest requires Jyavani Core 2.3.116 or newer.
+Localized-media hooks and post columns remain inactive when the Core media contract is unavailable. The manifest requires Jyavani Core 2.3.121 or newer.
