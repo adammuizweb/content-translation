@@ -1,6 +1,6 @@
 # Localized Media
 
-Localized media is available in Content Translation 1.14.0. Localized URL responses require Jyavani Core 2.3.121 or newer. Its generic Core media extension contract provides contextual media admin hooks, mutation metadata, resource lifecycle events, `media_data`, `featured_media`, and stable featured-media IDs.
+Localized media is available in Content Translation 1.14.0. The current editor and localized URL responses require Jyavani Core 2.3.122 or newer. Its generic Core media extension contract provides contextual media admin hooks, mutation metadata, resource lifecycle events, `media_data`, `featured_media`, stable featured-media IDs, and bounded modal loading.
 
 ## Metadata model
 
@@ -39,4 +39,4 @@ Core's `media_mutation_response` filter is used to append refreshed profile and 
 
 Export format version 8 contains media profiles, selected availability locales, media translations, localized media aliases, localized featured selections, and diagnostic Core media identity. No importer is provided.
 
-Localized-media hooks and post columns remain inactive when the Core media contract is unavailable. The manifest requires Jyavani Core 2.3.121 or newer.
+Localized-media hooks and post columns remain inactive when the Core media contract is unavailable. The manifest requires Jyavani Core 2.3.122 or newer.

@@ -19,18 +19,15 @@ function ct_ensure_media_schema(PDO $pdo): void {
     static $done = [];
     $key = spl_object_id($pdo);
     if (isset($done[$key])) return;
-    if ((string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+    $driver = (string)$pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    if ($driver === 'sqlite') {
         $probe = $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('ct_media_profiles','ct_media_available_locales','ct_media_translations','ct_media_aliases','ct_post_featured_media')");
-        if ((int)$probe->fetchColumn() !== 5) throw new RuntimeException('Localized media schema is unavailable.');
-        $done[$key] = true;
-        return;
+    } elseif ($driver === 'mysql') {
+        $probe = $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('ct_media_profiles','ct_media_available_locales','ct_media_translations','ct_media_aliases','ct_post_featured_media')");
+    } else {
+        throw new RuntimeException('Localized media schema is unavailable.');
     }
-    $migration = require dirname(__DIR__) . '/migrations/0004-localized-media.php';
-    if (!$migration instanceof Closure) throw new RuntimeException('Localized media schema migration is invalid.');
-    $migration($pdo);
-    $aliasMigration = require dirname(__DIR__) . '/migrations/0005-localized-media-aliases.php';
-    if (!$aliasMigration instanceof Closure) throw new RuntimeException('Localized media alias schema migration is invalid.');
-    $aliasMigration($pdo);
+    if ((int)$probe->fetchColumn() !== 5) throw new RuntimeException('Localized media schema is unavailable.');
     $done[$key] = true;
 }
 
@@ -58,6 +55,38 @@ function ct_media_source_fingerprint(array $row): string {
     return hash('sha256', json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 }
 
+function &ct_media_list_cache(PDO $pdo): array {
+    static $cache = [];
+    $key = spl_object_id($pdo);
+    if (!isset($cache[$key])) $cache[$key] = ['profiles' => [], 'availability' => [], 'translations' => [], 'aliases' => []];
+    return $cache[$key];
+}
+
+function ct_prime_media_list_cache(PDO $pdo, array $rows, string $locale): void {
+    $ids = array_values(array_unique(array_filter(array_map(static fn(array $row): int => (int)($row['id'] ?? 0), $rows))));
+    if ($ids === [] || !ct_media_locale_is_valid($pdo, $locale)) return;
+    ct_ensure_media_schema($pdo);
+    $cache = &ct_media_list_cache($pdo);
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    foreach ($ids as $id) {
+        $cache['profiles'][$id] = null;
+        $cache['availability'][$id . ':' . $locale] = false;
+        $cache['translations'][$id . ':' . $locale] = null;
+        $cache['aliases'][$id . ':' . $locale] = null;
+    }
+    $stmt = $pdo->prepare("SELECT * FROM ct_media_profiles WHERE media_id IN ({$placeholders})");
+    $stmt->execute($ids);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) $cache['profiles'][(int)$row['media_id']] = $row;
+    $stmt = $pdo->prepare("SELECT media_id FROM ct_media_available_locales WHERE locale = ? AND media_id IN ({$placeholders})");
+    $stmt->execute(array_merge([$locale], $ids));
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) $cache['availability'][(int)$id . ':' . $locale] = true;
+    foreach (['translations' => 'ct_media_translations', 'aliases' => 'ct_media_aliases'] as $bucket => $table) {
+        $stmt = $pdo->prepare("SELECT * FROM {$table} WHERE locale = ? AND media_id IN ({$placeholders})");
+        $stmt->execute(array_merge([$locale], $ids));
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) $cache[$bucket][(int)$row['media_id'] . ':' . $locale] = $row;
+    }
+}
+
 function ct_featured_source_fingerprint(array $post): string {
     return hash('sha256', json_encode([
         'post_id' => (int)($post['id'] ?? 0),
@@ -69,6 +98,8 @@ function ct_featured_source_fingerprint(array $post): string {
 
 function ct_media_profile(PDO $pdo, int $mediaId): ?array {
     if ($mediaId <= 0) return null;
+    $cache = &ct_media_list_cache($pdo);
+    if (array_key_exists($mediaId, $cache['profiles'])) return $cache['profiles'][$mediaId];
     ct_ensure_media_schema($pdo);
     $stmt = $pdo->prepare('SELECT * FROM ct_media_profiles WHERE media_id = ? LIMIT 1');
     $stmt->execute([$mediaId]);
@@ -85,12 +116,18 @@ function ct_media_available_locales(PDO $pdo, int $mediaId): array {
 function ct_media_is_available(PDO $pdo, int $mediaId, string $locale): bool {
     $profile = ct_media_profile($pdo, $mediaId);
     if (!$profile || (string)$profile['availability_policy'] === 'all') return true;
+    $cache = &ct_media_list_cache($pdo);
+    $key = $mediaId . ':' . $locale;
+    if (array_key_exists($key, $cache['availability'])) return $cache['availability'][$key];
     $stmt = $pdo->prepare('SELECT 1 FROM ct_media_available_locales WHERE media_id = ? AND locale = ? LIMIT 1');
     $stmt->execute([$mediaId, $locale]);
     return (bool)$stmt->fetchColumn();
 }
 
 function ct_media_translation(PDO $pdo, int $mediaId, string $locale): ?array {
+    $cache = &ct_media_list_cache($pdo);
+    $key = $mediaId . ':' . $locale;
+    if (array_key_exists($key, $cache['translations'])) return $cache['translations'][$key];
     ct_ensure_media_schema($pdo);
     $stmt = $pdo->prepare('SELECT * FROM ct_media_translations WHERE media_id = ? AND locale = ? LIMIT 1');
     $stmt->execute([$mediaId, $locale]);
@@ -98,6 +135,9 @@ function ct_media_translation(PDO $pdo, int $mediaId, string $locale): ?array {
 }
 
 function ct_media_alias(PDO $pdo, int $mediaId, string $locale): ?array {
+    $cache = &ct_media_list_cache($pdo);
+    $key = $mediaId . ':' . $locale;
+    if (array_key_exists($key, $cache['aliases'])) return $cache['aliases'][$key];
     ct_ensure_media_schema($pdo);
     $stmt = $pdo->prepare('SELECT * FROM ct_media_aliases WHERE media_id = ? AND locale = ? LIMIT 1');
     $stmt->execute([$mediaId, $locale]);
@@ -301,6 +341,12 @@ function ct_media_mutation_payload(PDO $pdo, array $fields, array $context, arra
 }
 
 if (ct_localized_media_supported()) {
+add_filter('media_admin_list_rows', function (array $rows, array $context, PDO $pdo): array {
+    $locale = ct_media_translation_context($pdo, $context);
+    if ($locale !== null) ct_prime_media_list_cache($pdo, $rows, $locale);
+    return $rows;
+}, 10, 3);
+
 add_filter('media_mutation_metadata', function (array $metadata, string $operation, array $row, array $input, PDO $pdo): array {
     $context = (array)($metadata['context'] ?? []);
     $contextLocale = ct_media_translation_context($pdo, $context);
@@ -493,7 +539,8 @@ add_filter('media_data', function (array $data, array $row, array $context, PDO 
 
 add_filter('featured_media', function ($featured, array $post, array $context, PDO $pdo) {
     $locale = trim((string)($context['content_locale'] ?? ''));
-    if ($locale === '' || $locale === content_default_locale()) return $featured;
+    $sourceLocale = function_exists('ct_post_source_locale') ? ct_post_source_locale($pdo, $post) : content_default_locale();
+    if ($locale === '' || $locale === $sourceLocale) return $featured;
     $selection = ct_featured_selection($pdo, (int)($post['id'] ?? 0), $locale);
     if (!$selection || (string)$selection['mode'] === 'inherit') {
         $inheritedId = is_array($featured) ? (int)($featured['id'] ?? 0) : 0;

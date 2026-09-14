@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.2 - 2026-09-14
+
+- Keep localized featured-media previews anchored to the post's actual source language.
+- Add synchronized Quill and CodeMirror modes to the translation editor and connect the video toolbar to the Core file picker.
+- Batch localized media metadata for gallery cards and replace request-time migration DDL with a lightweight schema check.
+- Require Jyavani Core 2.3.122 for bounded modal loading and read-only modal concurrency improvements.
+
 ## 1.16.1 - 2026-09-14
 
 - Serve localized media aliases as cacheable image responses from one contained public file instead of redirecting to the original filename.

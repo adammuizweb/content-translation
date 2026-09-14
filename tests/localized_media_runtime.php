@@ -24,6 +24,7 @@ function content_default_locale(): string { return 'en'; }
 function content_locale_presets(): array { return ['en' => 'English', 'id' => 'Indonesian', 'de' => 'German']; }
 function __(string $source): string { return $source; }
 function ct_content_locales(PDO $pdo): array { return ['en', 'id', 'de']; }
+function ct_post_source_locale(PDO $pdo, array $post): string { return 'id'; }
 function ct_translation_row_state_token(?array $row): string { return hash('sha256', json_encode($row ?? ['missing' => true])); }
 function ct_current_user_id(): int { return 7; }
 function ct_user_can_workspace(PDO $pdo, ?int $userId = null): bool { return true; }
@@ -93,6 +94,7 @@ $pdo->exec("UPDATE ct_media_available_locales SET locale = 'de'");
 $pdo->exec("UPDATE ct_post_featured_media SET mode = 'media', media_id = 1, alt_override = '', caption_override = 'Use-site'");
 $selected = apply_filters('featured_media', null, $post, ['content_locale' => 'de'], $pdo);
 $check($selected['id'] === 1 && $selected['alt'] === '' && $selected['caption'] === 'Use-site', 'media mode applies nullable use-site overrides');
+$check(apply_filters('featured_media', $source, $post, ['content_locale' => 'id'], $pdo) === $source, 'the actual post source locale bypasses localized featured selections');
 $pdo->exec("UPDATE media SET visibility = 'private', storage_disk = 'private', access_scope = 'editorial'");
 $check(apply_filters('featured_media', null, $post, ['content_locale' => 'de'], $pdo) === null, 'private selected media is rejected at runtime');
 $pdo->exec("UPDATE media SET visibility = 'public', storage_disk = 'public', access_scope = 'public', is_deleted = 1");

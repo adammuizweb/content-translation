@@ -10,7 +10,7 @@ $check = static function (bool $ok, string $message) use (&$failures): void {
 
 $manifest = json_decode((string)file_get_contents($root . '/plugin.json'), true, 32, JSON_THROW_ON_ERROR);
 $pages = $manifest['admin']['pages'] ?? [];
-$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.121', 'manifest requires the Core 2.3.121 public media response contract');
+$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.122', 'manifest requires the Core 2.3.122 modal and public media contracts');
 $check(($manifest['permissions'][0]['key'] ?? '') === 'plugin.content-translation.workspace.access', 'manifest owns one workspace permission');
 $check(count($pages) === 21, 'manifest declares all twenty-one admin routes');
 $check(array_filter($pages, static fn(array $page): bool => ($page['permission'] ?? '') !== 'plugin.content-translation.workspace.access') === [], 'every admin route uses workspace permission');

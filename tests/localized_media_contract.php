@@ -89,9 +89,14 @@ $check(str_contains($files['media'], "'source_fallback'")
 $check(str_contains($files['media'], "add_filter('media_admin_list_badges'")
     && str_contains($files['media'], "['label' => \$label, 'tone' => \$state]"),
     'contextual picker cards expose localized metadata readiness as a visible badge');
+$check(str_contains($files['media'], "add_filter('media_admin_list_rows'")
+    && str_contains($files['media'], 'ct_prime_media_list_cache')
+    && str_contains($files['media'], 'media_id IN ({$placeholders})'),
+    'contextual media galleries batch localized metadata instead of querying per card');
 $check(str_contains($files['media'], "add_filter('featured_media'")
     && str_contains($files['media'], 'media_load_live') && str_contains($files['media'], 'media_client_url')
-    && str_contains($files['media'], "mode'] === 'none'"),
+    && str_contains($files['media'], "mode'] === 'none'")
+    && str_contains($files['media'], '$locale === $sourceLocale'),
     'localized featured inherit/media/none resolution uses Core live and public helpers');
 $check(str_contains($files['editor'], 'media_picker_query')
     && str_contains($files['editor'], "'content_locale' => \$locale")
@@ -105,6 +110,7 @@ $check(str_contains($files['editor'], "\$post['type'] === 'page' ? 'page' : 'pos
     && str_contains($files['editor'], 'This media is not available for the content language.'),
     'picker validates page/post consumers and immediately consumes locale availability diagnostics');
 $check(str_contains($files['editor'], 'media_resolve_featured')
+    && str_contains($files['editor'], "'content_locale' => \$sourceLocale")
     && str_contains($files['editor'], 'media_post_display_url')
     && str_contains($files['editor'], '<?php if ($featuredUrl): ?>')
     && str_contains($files['editor'], 'renderFeaturedPreview')
@@ -116,11 +122,24 @@ $check(str_contains($files['editor'], 'pattern="[a-zA-Z0-9_\\/\\-]*"')
     'translation slug patterns remain valid under browser RegExp v semantics');
 $check(str_contains($files['editor'], '/admin/modal_img/index.php?embedded=1')
     && str_contains((string)file_get_contents($root . '/plugin.json'), '"media-selector"')
+    && str_contains((string)file_get_contents($root . '/plugin.json'), '"file-selector"')
     && !str_contains($files['editor'], '/static/js/add/media-selector.js')
     && str_contains($files['editor'], "toolbar.addHandler('image'")
     && str_contains($files['editor'], "[{ color: [] }, { background: [] }]")
-    && str_contains($files['editor'], "['link', 'image', 'video']"),
+    && str_contains($files['editor'], "['link', 'image', 'video']")
+    && str_contains($files['editor'], "toolbar.addHandler('video'")
+    && str_contains($files['editor'], '/admin/modal_file/index.php?embedded=1')
+    && str_contains($files['editor'], 'window.generateFileShortcode'),
     'translation editor uses the canonical modal route and a full Quill toolbar with media selection');
+$check(str_contains($files['editor'], 'id="ct-quill-area"')
+    && str_contains($files['editor'], 'id="ct-codemirror-area"')
+    && str_contains($files['editor'], 'name="editor_mode"')
+    && str_contains($files['editor'], 'function setEditorMode(mode)')
+    && str_contains($files['editor'], 'complexPattern.test(html)'),
+    'translation editor offers synchronized Quill and CodeMirror modes without passing complex HTML through Quill');
+$check(str_contains($files['media'], 'information_schema.tables')
+    && !str_contains($files['media'], "require dirname(__DIR__) . '/migrations/0004-localized-media.php'"),
+    'normal localized-media requests probe schema without executing migration DDL');
 $check(str_contains($files['media'], 'ct-media-metadata-slot')
     && str_contains($files['media'], 'form.addEventListener("formdata"')
     && str_contains($files['media'], 'slot.appendChild(wrap)')

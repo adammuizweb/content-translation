@@ -547,6 +547,8 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'Choose media for this locale' => ['Pilih media untuk bahasa ini', 'Medien für diese Sprache auswählen'],
             'No thumbnail' => ['Tanpa gambar mini', 'Kein Vorschaubild'],
             'Open media picker' => ['Buka pemilih media', 'Medienauswahl öffnen'],
+            'File selector is unavailable.' => ['Pemilih file tidak tersedia.', 'Die Dateiauswahl ist nicht verfügbar.'],
+            'Complex HTML detected. CodeMirror preserves the source markup.' => ['HTML kompleks terdeteksi. CodeMirror mempertahankan markup sumber.', 'Komplexes HTML erkannt. CodeMirror erhält das Quell-Markup.'],
             'This media is unavailable, private, or deleted for the selected locale. It may remain in a draft but cannot be published.' => ['Media ini tidak tersedia, bersifat privat, atau dihapus untuk bahasa terpilih. Media dapat tetap berada dalam draf tetapi tidak dapat diterbitkan.', 'Dieses Medium ist für die ausgewählte Sprache nicht verfügbar, privat oder gelöscht. Es kann im Entwurf bleiben, aber nicht veröffentlicht werden.'],
             'Override alt text at this use site' => ['Ganti teks alt pada penggunaan ini', 'Alternativtext an dieser Verwendungsstelle überschreiben'],
             'Override caption at this use site' => ['Ganti keterangan pada penggunaan ini', 'Bildunterschrift an dieser Verwendungsstelle überschreiben'],

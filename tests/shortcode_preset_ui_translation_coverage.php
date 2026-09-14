@@ -49,6 +49,8 @@ $required = [
     'Choose media for this locale',
     'No thumbnail',
     'Open media picker',
+    'File selector is unavailable.',
+    'Complex HTML detected. CodeMirror preserves the source markup.',
     'This media is unavailable, private, or deleted for the selected locale. It may remain in a draft but cannot be published.',
     'Override alt text at this use site',
     'Override caption at this use site',

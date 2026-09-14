@@ -80,10 +80,14 @@ $featuredSelection = $supportsFeatured ? ct_featured_selection($pdo, $postId, $l
 $featuredMode = (string)($featuredSelection['mode'] ?? 'inherit');
 $featuredId = (int)($featuredSelection['media_id'] ?? 0);
 $featuredRow = $featuredId > 0 && function_exists('media_load_live') ? media_load_live($pdo, $featuredId) : null;
-$selectedFeaturedUrl = $featuredRow && function_exists('media_client_url') ? media_client_url($featuredRow, true) : null;
+$selectedFeaturedData = $featuredRow && function_exists('media_filter_data') ? media_filter_data($pdo, $featuredRow, [
+    'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
+    'field' => 'featured', 'content_locale' => $locale, 'selection_mode' => 'review',
+], false) : null;
+$selectedFeaturedUrl = is_array($selectedFeaturedData) ? (string)($selectedFeaturedData['url'] ?? '') : null;
 $sourceFeatured = $supportsFeatured && function_exists('media_resolve_featured') ? media_resolve_featured($pdo, $post, [
     'surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId,
-    'field' => 'featured', 'content_locale' => $locale,
+    'field' => 'featured', 'content_locale' => $sourceLocale,
 ]) : null;
 $sourcePreviewPost = $post;
 $sourcePreviewPost['display_image'] = is_array($sourceFeatured) ? (string)($sourceFeatured['url'] ?? '') : null;
@@ -181,12 +185,14 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
         <?php endif; ?>
         <div class="ct-field">
           <label><?= __('Content') ?></label>
-          <?php if ($usesCodeMirror): ?>
-            <p class="muted ct-editor-hint"><?= __('Complex HTML detected. CodeMirror preserves the source markup.') ?></p>
-            <textarea id="ct-codemirror" name="content" dir="ltr"><?= h((string)$translation['content']) ?></textarea>
-          <?php else: ?>
-            <div id="ct-quill" class="adam-quill" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>"><?= (string)$translation['content'] ?></div>
-          <?php endif; ?>
+          <div class="ct-editor-modes">
+            <label><input type="radio" name="editor_mode" value="quill"<?= !$usesCodeMirror ? ' checked' : '' ?>> <?= __('Quill (rich)') ?></label>
+            <label><input type="radio" name="editor_mode" value="codemirror"<?= $usesCodeMirror ? ' checked' : '' ?>> <?= __('CodeMirror (HTML)') ?></label>
+          </div>
+          <p class="muted ct-editor-hint" id="ct-editor-hint"<?= $usesCodeMirror ? '' : ' hidden' ?>><?= __('Complex HTML detected. CodeMirror preserves the source markup.') ?></p>
+          <textarea id="ct-content" name="content" hidden><?= h((string)$translation['content']) ?></textarea>
+          <div id="ct-quill-area"<?= $usesCodeMirror ? ' hidden' : '' ?>><div id="ct-quill" class="adam-quill" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>"><?= $usesCodeMirror ? '' : (string)$translation['content'] ?></div></div>
+          <div id="ct-codemirror-area"<?= $usesCodeMirror ? '' : ' hidden' ?>><textarea id="ct-codemirror" dir="ltr"><?= h((string)$translation['content']) ?></textarea></div>
         </div>
 
         <div class="ct-actions">
@@ -236,8 +242,10 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
 <script>
 (function(){
   const form = document.getElementById('ct-form');
+  const contentField = document.getElementById('ct-content');
   let quill = null;
   let codeMirror = null;
+  let activeEditorMode = <?= json_encode($usesCodeMirror ? 'codemirror' : 'quill') ?>;
   const pickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inheritedFeaturedPreview = <?= json_encode(['url' => $inheritedFeaturedUrl, 'label' => $inheritedFeaturedUrl ? __('Source thumbnail') : ''], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -270,7 +278,9 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
       gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter']
     });
     codeMirror.setSize('100%', '58vh');
-  } else if (window.Quill) {
+    codeMirror.on('change', function(){ if (activeEditorMode === 'codemirror') contentField.value = codeMirror.getValue(); });
+  }
+  if (document.getElementById('ct-quill') && window.Quill) {
     quill = new Quill('#ct-quill', {
       theme: 'snow',
       modules: { toolbar: fullToolbar },
@@ -306,8 +316,56 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
           }, 0);
         }).catch(function(error){ console.warn('[content-translation] media picker failed', error); });
       });
+      toolbar.addHandler('video', function(){
+        const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
+        if (quill.root) quill.root.blur();
+        if (typeof window.openFileSelector !== 'function') {
+          notify('error', <?= json_encode(__('File selector is unavailable.')) ?>);
+          return;
+        }
+        window.openFileSelector({
+          url: <?= json_encode($base . '/admin/modal_file/index.php?embedded=1', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+          maxWidth: '980px'
+        }).then(function(detail){
+          const file = typeof window.normalizeFile === 'function' ? window.normalizeFile(detail) : detail;
+          const html = typeof window.generateFileShortcode === 'function' ? window.generateFileShortcode(file) : '';
+          if (!html) return;
+          quill.clipboard.dangerouslyPasteHTML(range.index, html);
+          quill.setSelection(range.index + 2, 0);
+        }).catch(function(error){ console.warn('[content-translation] file picker failed', error); });
+      });
     }
+    quill.on('text-change', function(){ if (activeEditorMode === 'quill') contentField.value = quill.root.innerHTML; });
   }
+
+  const complexPattern = /<(script|style|iframe|embed|object|form|svg|canvas|php|link|meta|table|thead|tbody|tfoot|tr|th|td)[\s>]|on[a-z]+\s*=|style\s*=/i;
+  function setEditorMode(mode) {
+    const quillArea = document.getElementById('ct-quill-area');
+    const codeMirrorArea = document.getElementById('ct-codemirror-area');
+    const hint = document.getElementById('ct-editor-hint');
+    if (mode === 'quill') {
+      const html = codeMirror ? codeMirror.getValue() : contentField.value;
+      if (complexPattern.test(html)) {
+        form.querySelector('[name="editor_mode"][value="codemirror"]').checked = true;
+        notify('error', <?= json_encode(__('Complex HTML detected. CodeMirror preserves the source markup.')) ?>);
+        return;
+      }
+      if (quill && quill.root.innerHTML !== html) quill.clipboard.dangerouslyPasteHTML(html);
+      contentField.value = quill ? quill.root.innerHTML : html;
+    } else {
+      const html = quill && activeEditorMode === 'quill' ? quill.root.innerHTML : contentField.value;
+      if (codeMirror && codeMirror.getValue() !== html) codeMirror.setValue(html);
+      contentField.value = codeMirror ? codeMirror.getValue() : html;
+      setTimeout(function(){ if (codeMirror) codeMirror.refresh(); }, 0);
+    }
+    activeEditorMode = mode;
+    quillArea.hidden = mode !== 'quill';
+    codeMirrorArea.hidden = mode !== 'codemirror';
+    hint.hidden = mode !== 'codemirror' || !complexPattern.test(contentField.value);
+  }
+  form.querySelectorAll('[name="editor_mode"]').forEach(function(input){
+    input.addEventListener('change', function(){ if (input.checked) setEditorMode(input.value); });
+  });
 
   function notify(type, msg) {
     if (window.NewNotifToast && typeof window.NewNotifToast.show === 'function') {
@@ -319,8 +377,8 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
   }
 
   function getContent() {
-    if (codeMirror) return codeMirror.getValue();
-    return quill ? quill.root.innerHTML : '';
+    if (activeEditorMode === 'codemirror') return codeMirror ? codeMirror.getValue() : contentField.value;
+    return quill ? quill.root.innerHTML : contentField.value;
   }
 
   function renderFeaturedPreview() {
@@ -368,7 +426,7 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
     if (typeof window.openMediaSelector !== 'function') return;
     window.openMediaSelector({ url: url, maxWidth: '980px' })
       .then(selectFeatured)
-      .catch(function(error){ console.warn('[content-translation] featured media picker failed', error); });
+      .catch(function(error){ console.warn('[content-translation] featured media picker failed', error); notify('error', <?= json_encode(__('Network error.')) ?>); });
   });
   document.addEventListener('media:insert', function(event){ selectFeatured(event.detail); });
   window.addEventListener('message', function(event){ if (event.origin === window.location.origin && event.data?.type === 'media:insert') selectFeatured(event.data.detail); });
