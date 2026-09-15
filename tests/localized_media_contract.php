@@ -16,7 +16,13 @@ $files = [
     'alias_migration' => (string)file_get_contents($root . '/migrations/0005-localized-media-aliases.php'),
     'docs' => (string)file_get_contents($root . '/docs/localized-media.md'),
 ];
-$core = getenv('CORE_ROOT') ?: (getenv('JY_ROOT') ?: dirname(__DIR__, 3) . '/jyavani.lan');
+$core = getenv('CORE_ROOT') ?: getenv('JY_ROOT');
+if ($core === false || $core === '') {
+    $consumerRoot = dirname($root, 2);
+    $core = is_file($consumerRoot . '/cfg/helpers/media_helpers.php')
+        ? $consumerRoot
+        : dirname(__DIR__, 3) . '/jyavani.lan';
+}
 $failures = [];
 $checks = 0;
 $check = static function (bool $condition, string $message) use (&$failures, &$checks): void {
@@ -207,8 +213,9 @@ $check(str_contains($files['media'], 'function ct_localized_media_supported')
     && str_contains($files['editor'], '$localizedMediaSupported'),
     'localized media integration gates hook registration and editor columns behind the Core contract');
 $defaultTemplates = '';
-foreach (glob($core . '/public/views/themes/default/main/**/*.php') ?: [] as $template) $defaultTemplates .= (string)file_get_contents($template);
-$defaultTemplates .= (string)file_get_contents($core . '/public/views/themes/default/main/homepage.php');
+$corePublic = is_dir($core . '/public_html/views/themes/default/main') ? $core . '/public_html' : $core . '/public';
+foreach (glob($corePublic . '/views/themes/default/main/**/*.php') ?: [] as $template) $defaultTemplates .= (string)file_get_contents($template);
+$defaultTemplates .= (string)file_get_contents($corePublic . '/views/themes/default/main/homepage.php');
 $coreMedia = (string)file_get_contents($core . '/cfg/helpers/media_helpers.php');
 $check(str_contains($coreMedia, 'media_post_image_alt') && str_contains($coreMedia, 'media_post_image_caption')
     && str_contains($defaultTemplates, 'media_post_image_alt') && str_contains($defaultTemplates, 'media_post_image_caption'),

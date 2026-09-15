@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.7 - 2026-09-15
+
+- Make localized media contracts resolve canonical and downstream consumer Core layouts without environment-specific paths.
+
 ## 1.16.6 - 2026-09-15
 
 - Include localized Post and Page collection landing URLs in the selected locale sitemap files, including empty collections.
