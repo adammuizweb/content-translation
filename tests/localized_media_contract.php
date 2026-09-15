@@ -149,6 +149,10 @@ $check(str_contains($files['media'], 'ct-media-metadata-slot')
     && str_contains($files['media'], 'input.disabled=all')
     && str_contains($files['media'], 'input.checked=all||selected.has(input.value)'),
     'media details share one locale-switched metadata form and represent all-locale availability as checked disabled controls');
+$check(str_contains($files['media'], "}, 100, 4);")
+    && str_contains($files['media'], 'queueMicrotask(rebase)')
+    && str_contains($files['media'], 'guard.register(form);guard.markSaved(null,null,form)'),
+    'media translation initialization rebases the shared unsaved guard after all synchronous detail hooks');
 $check(str_contains($files['media'], '-source-locale" name="media_extension[content-translation][metadata_source_locale]')
     && str_contains($files['media'], 'sourceSelect.addEventListener("change"')
     && str_contains($files['media'], 'sourceLocale=sourceSelect.value;renderSource()')

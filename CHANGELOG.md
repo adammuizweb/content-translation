@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.4 - 2026-09-15
+
+- Rebase the shared media form's unsaved-change guard after localized metadata initialization to prevent an immediate false warning.
+
 ## 1.16.3 - 2026-09-14
 
 - Replace an absent localized featured-media image with a translated empty-state placeholder instead of rendering a broken image.
