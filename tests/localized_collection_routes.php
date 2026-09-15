@@ -47,15 +47,12 @@ $check(ct_collection_url($pdo, 'posts', 'en') === '/article/'
     'collection URLs preserve locale, pagination, and search state');
 $check(ct_collection_url($pdo, 'pages', 'de') === '/de/seiten/',
     'Page list paths can differ independently by locale');
-$check(ct_collection_sitemap_map_count($pdo, 'pages', 'de', 0, 30) === 1
-    && ct_collection_sitemap_map_count($pdo, 'themes', 'de', 0, 30) === 0
-    && ct_collection_sitemap_map_count($pdo, 'posts', 'id', 31, 30) === 2,
-    'localized collection landing pages keep their first sitemap present without changing content pagination');
 $check(str_contains($frontend, "add_filter('posts_list_path'")
     && str_contains($frontend, "add_filter('pages_list_path'")
     && str_contains($frontend, 'ct_collection_request_context')
     && str_contains($frontend, 'ct_collection_url')
-    && str_contains($frontend, 'ct_collection_sitemap_map_count'),
+    && str_contains($frontend, "add_filter('sitemap_content_list_entries'")
+    && !str_contains($frontend, 'ct_collection_sitemap_map_count'),
     'frontend integrates localized collection routing and URL generation');
 $check(str_contains($frontend, 'hreflang="x-default"')
     && str_contains($frontend, 'ct_render_switcher_items'),

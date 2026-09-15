@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.8 - 2026-09-15
+
+- Move localized Post and Page collection landing URLs into Core's content-list sitemap while keeping translated item maps count-driven.
+
 ## 1.16.7 - 2026-09-15
 
 - Make localized media contracts resolve canonical and downstream consumer Core layouts without environment-specific paths.

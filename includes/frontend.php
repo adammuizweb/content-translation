@@ -557,12 +557,37 @@ add_filter('sitemap_index_entries', function ($entries, $pdo, $domain, $limit) {
                 : '';
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published'{$routeRequirement}");
             $stmt->execute([$locale, $postType]);
-            $maps = ct_collection_sitemap_map_count($pdo, $type, $locale, (int)$stmt->fetchColumn(), (int)$limit);
+            $maps = (int)ceil(max(0, (int)$stmt->fetchColumn()) / max(1, (int)$limit));
             for ($page = 1; $page <= $maps; $page++) $entries[] = ['loc' => $domain . '/sitemap_' . rawurlencode($locale) . '_' . $type . '_' . $page . '.xml'];
         }
     }
     return $entries;
 }, 10, 4);
+
+add_filter('sitemap_content_list_entries', function ($entries, $pdo, $domain) {
+    if (!is_array($entries) || !$pdo instanceof PDO) return $entries;
+
+    $deduplicated = [];
+    $seen = [];
+    foreach ($entries as $entry) {
+        $loc = is_array($entry) ? (string)($entry['loc'] ?? '') : '';
+        if ($loc !== '' && isset($seen[$loc])) continue;
+        if ($loc !== '') $seen[$loc] = true;
+        $deduplicated[] = $entry;
+    }
+
+    $locales = array_values(array_unique(array_merge([content_default_locale()], ct_enabled_locales($pdo))));
+    foreach (['posts' => 'is_posts_list_enabled', 'pages' => 'is_pages_list_enabled'] as $type => $enabledFunction) {
+        if (!function_exists($enabledFunction) || !$enabledFunction($pdo)) continue;
+        foreach ($locales as $locale) {
+            $loc = rtrim((string)$domain, '/') . ct_collection_url($pdo, $type, $locale);
+            if (isset($seen[$loc])) continue;
+            $seen[$loc] = true;
+            $deduplicated[] = ['loc' => $loc];
+        }
+    }
+    return $deduplicated;
+}, 10, 3);
 
 add_filter('sitemap_query_clauses', function ($clauses, $pdo, $context) {
     if (!is_array($clauses) || !$pdo instanceof PDO || !is_array($context)) return $clauses;
@@ -594,10 +619,6 @@ add_filter('sitemap_locale_rendered', function ($rendered, $locale, $type, $page
     $stmt->execute();
     header('Content-Type: application/xml; charset=utf-8');
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n";
-    if ((int)$pageNum === 1 && in_array($type, ['posts', 'pages'], true) && ct_collection_route_path($pdo, $type, $locale) !== '') {
-        $loc = ct_base_url() . ct_collection_url($pdo, $type, $locale);
-        echo '  <url><loc>' . htmlspecialchars($loc, ENT_XML1) . '</loc></url>' . "\n";
-    }
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $loc = ct_base_url() . ct_post_url((string)$row['slug'], $locale);
         echo '  <url><loc>' . htmlspecialchars($loc, ENT_XML1) . '</loc><lastmod>' . htmlspecialchars(date('c', strtotime((string)$row['changed_at'])), ENT_XML1) . '</lastmod></url>' . "\n";
