@@ -127,7 +127,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
               <iframe class="ct-section-preview ct-translated-preview" sandbox="allow-same-origin" title="<?= h(__('Translated section preview')) ?>" srcdoc="<?= h($translatedPreview) ?>"></iframe>
               <details class="ct-advanced-html">
                 <summary><?= __('Advanced translated HTML') ?></summary>
-                <p class="muted"><?= __('Raw bytes are preserved when accepted. Unsafe HTML, URLs, and CSS are rejected on save.') ?></p>
+                <p class="muted"><?= __('Unsafe HTML, URLs, and CSS are rejected on save. Existing legacy HTML permits text and accessibility-label edits while structure and executable content remain unchanged.') ?></p>
                 <textarea class="ct-section-html" name="sections[<?= $index ?>][html]" dir="ltr"><?= h($translatedHtml) ?></textarea>
               </details>
             </section>

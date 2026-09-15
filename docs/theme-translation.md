@@ -126,12 +126,14 @@ markup, data and ARIA attributes, CSS variables, and normal relative/HTTP(S),
 mail, and telephone links remain supported. Validation is reject-only: it does
 not sanitize or serialize accepted HTML.
 
-An unsafe section from an existing hash-valid v1 package is grandfathered only
-when the submitted HTML is byte-for-byte identical to that same named section.
-This permits fallback/metadata edits and safe changes elsewhere in the package
-without breaking existing runtime output. Any byte change to that unsafe HTML,
-or unsafe HTML in a new package, is rejected. The read adapter remains separate
-from this write-time policy.
+An unsafe section from an existing hash-valid v1 package is grandfathered with
+a constrained translation policy. Editors may change ordinary text nodes and
+the inert `alt`, `title`, `aria-label`, `aria-description`, and `placeholder`
+attribute values. Tags, all other attributes, comments, declarations, and raw
+content in script/style and related executable or parser-sensitive elements must
+remain byte-for-byte identical. Unsafe HTML in a new package is rejected. This
+permits translation corrections without widening the executable markup surface;
+the read adapter remains separate from this write-time policy.
 
 ## Source verification and concurrency
 

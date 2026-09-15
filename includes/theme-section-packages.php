@@ -257,6 +257,145 @@ if (!function_exists('ct_theme_section_package_format')) {
         return null;
     }
 
+    /** Split legacy HTML so text can be edited without changing executable or structural bytes. */
+    function ct_theme_section_legacy_html_tokens(string $html): ?array {
+        $tokens = [];
+        $offset = 0;
+        $length = strlen($html);
+        $rawTag = null;
+        $rawTags = array_flip(['script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext']);
+        while ($offset < $length) {
+            if ($rawTag !== null) {
+                if ($rawTag === 'plaintext') {
+                    $tokens[] = ['editable' => false, 'value' => substr($html, $offset)];
+                    $offset = $length;
+                    break;
+                }
+                if (preg_match('/<\s*\/\s*' . preg_quote($rawTag, '/') . '\s*>/i', $html, $closing, PREG_OFFSET_CAPTURE, $offset) !== 1) {
+                    $tokens[] = ['editable' => false, 'value' => substr($html, $offset)];
+                    $offset = $length;
+                    break;
+                }
+                $closingOffset = (int)$closing[0][1];
+                $tokens[] = ['editable' => false, 'value' => substr($html, $offset, $closingOffset - $offset)];
+                $offset = $closingOffset;
+                $rawTag = null;
+            }
+
+            $start = strpos($html, '<', $offset);
+            if ($start === false) {
+                $tokens[] = ['editable' => true, 'value' => substr($html, $offset)];
+                $offset = $length;
+                break;
+            }
+            $tokens[] = ['editable' => true, 'value' => substr($html, $offset, $start - $offset)];
+
+            if (substr($html, $start, 4) === '<!--') {
+                $end = strpos($html, '-->', $start + 4);
+                if ($end === false) return null;
+                $end += 3;
+            } else {
+                $quote = null;
+                $end = null;
+                for ($i = $start + 1; $i < $length; $i++) {
+                    $char = $html[$i];
+                    if ($quote !== null) {
+                        if ($char === $quote) $quote = null;
+                        continue;
+                    }
+                    if ($char === '"' || $char === "'") {
+                        $quote = $char;
+                    } elseif ($char === '>') {
+                        $end = $i + 1;
+                        break;
+                    }
+                }
+                if ($end === null || $quote !== null) return null;
+            }
+
+            $markup = substr($html, $start, $end - $start);
+            $tokens[] = ['editable' => false, 'value' => $markup];
+            if (preg_match('/\A<\s*([a-z][a-z0-9:-]*)\b/is', $markup, $opening) === 1) {
+                $tag = strtolower((string)$opening[1]);
+                if (isset($rawTags[$tag])) $rawTag = $tag;
+            }
+            $offset = $end;
+        }
+        if ($length === 0) $tokens[] = ['editable' => true, 'value' => ''];
+        return $tokens;
+    }
+
+    function ct_theme_section_legacy_markup_signature(string $markup): ?string {
+        if (preg_match('/\A<\s*([a-z][a-z0-9:-]*)(?=\s|\/?\s*>)/i', $markup, $opening) !== 1) return $markup;
+        $editableAttrs = array_flip(['alt', 'title', 'aria-label', 'aria-description', 'placeholder']);
+        $signature = (string)$opening[0];
+        $offset = strlen((string)$opening[0]);
+        $length = strlen($markup);
+        while ($offset < $length) {
+            if ($markup[$offset] === '>') return $signature . substr($markup, $offset);
+            if (preg_match('/\G\s+/A', $markup, $space, 0, $offset) === 1) {
+                $signature .= (string)$space[0];
+                $offset += strlen((string)$space[0]);
+                continue;
+            }
+            if ($markup[$offset] === '/' && trim(substr($markup, $offset + 1)) === '>') {
+                return $signature . substr($markup, $offset);
+            }
+            if (preg_match('/\G([a-zA-Z_:][a-zA-Z0-9_.:-]*)/A', $markup, $attributeMatch, 0, $offset) !== 1) return null;
+            $attribute = strtolower((string)$attributeMatch[1]);
+            $signature .= (string)$attributeMatch[0];
+            $offset += strlen((string)$attributeMatch[0]);
+            if (preg_match('/\G\s*/A', $markup, $space, 0, $offset) === 1) {
+                $signature .= (string)$space[0];
+                $offset += strlen((string)$space[0]);
+            }
+            if ($offset >= $length || $markup[$offset] !== '=') continue;
+            $signature .= '=';
+            $offset++;
+            if (preg_match('/\G\s*/A', $markup, $space, 0, $offset) === 1) {
+                $signature .= (string)$space[0];
+                $offset += strlen((string)$space[0]);
+            }
+            if ($offset >= $length) return null;
+            $quote = $markup[$offset];
+            if ($quote === '"' || $quote === "'") {
+                $end = strpos($markup, $quote, $offset + 1);
+                if ($end === false) return null;
+                $value = substr($markup, $offset + 1, $end - $offset - 1);
+                $signature .= $quote . (isset($editableAttrs[$attribute]) ? "\0" : $value) . $quote;
+                $offset = $end + 1;
+                continue;
+            }
+            if (preg_match('/\G[^\s"\'`=<>]+/A', $markup, $valueMatch, 0, $offset) !== 1) return null;
+            $value = (string)$valueMatch[0];
+            $signature .= isset($editableAttrs[$attribute]) ? "\0" : $value;
+            $offset += strlen($value);
+        }
+        return null;
+    }
+
+    function ct_theme_section_legacy_text_edit_is_safe(string $existing, string $candidate): bool {
+        if ($candidate === '' || strlen($candidate) > 1024 * 1024
+            || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $candidate)
+            || str_contains($candidate, '<?')
+            || stripos($candidate, '[[widget:') !== false) {
+            return false;
+        }
+        $before = ct_theme_section_legacy_html_tokens($existing);
+        $after = ct_theme_section_legacy_html_tokens($candidate);
+        if ($before === null || $after === null || count($before) !== count($after)) return false;
+        foreach ($before as $index => $token) {
+            $changed = (string)$token['value'] !== (string)$after[$index]['value'];
+            if ((bool)$token['editable'] !== (bool)$after[$index]['editable']) return false;
+            if ($changed && !(bool)$token['editable']) {
+                $beforeSignature = ct_theme_section_legacy_markup_signature((string)$token['value']);
+                $afterSignature = ct_theme_section_legacy_markup_signature((string)$after[$index]['value']);
+                if ($beforeSignature === null || $afterSignature === null || !hash_equals($beforeSignature, $afterSignature)) return false;
+            }
+        }
+        return true;
+    }
+
     function ct_decode_theme_section_package(string $content): ?array {
         if ($content === '' || strlen($content) > 2 * 1024 * 1024) return null;
         try {
@@ -421,7 +560,8 @@ if (!function_exists('ct_theme_section_package_format')) {
             if (!is_string($html)) throw new InvalidArgumentException('Section HTML must be text.');
             $htmlError = ct_validate_theme_section_html($html);
             $legacyHtml = $existingPackage['sections'][$name]['html'] ?? null;
-            if ($htmlError !== null && (!is_string($legacyHtml) || $html !== $legacyHtml)) {
+            if ($htmlError !== null
+                && (!is_string($legacyHtml) || !ct_theme_section_legacy_text_edit_is_safe($legacyHtml, $html))) {
                 throw new InvalidArgumentException($name . ': ' . $htmlError);
             }
             $fallback = [];

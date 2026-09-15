@@ -70,7 +70,7 @@ $check($decoded !== null && $rebuilt === $package, 'unchanged valid v1 package r
 $check(ct_theme_section_package_composition($rebuilt) === ct_theme_section_package_composition($package), 'unchanged v1 composition output is stable');
 
 $legacyPackage = $package;
-$legacyHtml = '<section onclick="legacyAction()"><h1>Legacy</h1><script>window.legacyPackage = true;</script></section>';
+$legacyHtml = '<!-- legacy --><section aria-label="Legacy section" onclick="legacyAction()"><h1>Legacy</h1><script>window.legacyPackage = true;</script></section>';
 $legacyPackage['sections']['landing.hero']['html'] = $legacyHtml;
 $legacyPackage['sections']['landing.hero']['sha256'] = hash('sha256', $legacyHtml);
 $legacyPackage['source_sha256'] = hash('sha256', implode('', array_column($legacyPackage['sections'], 'html')));
@@ -92,15 +92,47 @@ $check(($legacyMixedSave['sections']['landing.hero']['html'] ?? '') === $legacyH
     && ($legacyMixedSave['sections']['landing.hero']['fallback']['summary'] ?? '') === 'Updated semantic fallback.'
     && ($legacyMixedSave['sections']['landing.cta']['html'] ?? '') === $legacyEditedElsewhere[1]['html'],
     'legacy unsafe bytes permit fallback edits and changes to other safe sections');
+$legacyTextEdit = $legacySubmitted;
+$legacyTextEdit[0]['html'] = str_replace(['aria-label="Legacy section"', '>Legacy<'], ['aria-label="Translated section"', '>Translated text<'], $legacyHtml);
+$legacyTextPackage = ct_build_theme_section_package('example', $sourceA, $legacyTextEdit, $legacyDecoded);
+$check(($legacyTextPackage['sections']['landing.hero']['html'] ?? '') === $legacyTextEdit[0]['html'], 'text nodes and accessibility labels in grandfathered unsafe HTML can be translated');
+
 $legacyChangeRejected = false;
 $changedLegacy = $legacySubmitted;
-$changedLegacy[0]['html'] .= ' ';
+$changedLegacy[0]['html'] = str_replace('onclick="legacyAction()"', 'onclick="changedAction()"', $legacyHtml);
 try {
     ct_build_theme_section_package('example', $sourceA, $changedLegacy, $legacyDecoded);
 } catch (InvalidArgumentException $e) {
     $legacyChangeRejected = true;
 }
-$check($legacyChangeRejected, 'changing grandfathered unsafe HTML bytes is rejected');
+$check($legacyChangeRejected, 'changing grandfathered unsafe HTML attributes is rejected');
+$legacyScriptRejected = false;
+$changedLegacy = $legacySubmitted;
+$changedLegacy[0]['html'] = str_replace('true;', 'false;', $legacyHtml);
+try {
+    ct_build_theme_section_package('example', $sourceA, $changedLegacy, $legacyDecoded);
+} catch (InvalidArgumentException $e) {
+    $legacyScriptRejected = true;
+}
+$check($legacyScriptRejected, 'changing grandfathered script content is rejected');
+$legacyCommentRejected = false;
+$changedLegacy = $legacySubmitted;
+$changedLegacy[0]['html'] = str_replace('legacy --', 'changed --', $legacyHtml);
+try {
+    ct_build_theme_section_package('example', $sourceA, $changedLegacy, $legacyDecoded);
+} catch (InvalidArgumentException $e) {
+    $legacyCommentRejected = true;
+}
+$check($legacyCommentRejected, 'changing grandfathered comments is rejected');
+$legacyMarkupRejected = false;
+$changedLegacy = $legacySubmitted;
+$changedLegacy[0]['html'] = str_replace('>Legacy<', '><img src=x onerror=alert(1)>Legacy<', $legacyHtml);
+try {
+    ct_build_theme_section_package('example', $sourceA, $changedLegacy, $legacyDecoded);
+} catch (InvalidArgumentException $e) {
+    $legacyMarkupRejected = true;
+}
+$check($legacyMarkupRejected, 'injecting markup into a grandfathered text node is rejected');
 $newUnsafeRejected = false;
 try {
     ct_build_theme_section_package('example', $sourceA, $legacySubmitted);

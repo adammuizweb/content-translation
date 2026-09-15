@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.5 - 2026-09-15
+
+- Permit text-node and accessibility-label translations in hash-valid legacy Theme Section HTML while preserving structural and executable bytes.
+
 ## 1.16.4 - 2026-09-15
 
 - Rebase the shared media form's unsaved-change guard after localized metadata initialization to prevent an immediate false warning.
