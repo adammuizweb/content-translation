@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.6 - 2026-09-15
+
+- Include localized Post and Page collection landing URLs in the selected locale sitemap files, including empty collections.
+
 ## 1.16.5 - 2026-09-15
 
 - Permit text-node and accessibility-label translations in hash-valid legacy Theme Section HTML while preserving structural and executable bytes.

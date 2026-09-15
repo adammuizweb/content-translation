@@ -444,6 +444,14 @@ if (!function_exists('ct_ensure_schema')) {
         return $query !== '' ? $url . '?' . http_build_query(['q' => $query]) : $url;
     }
 
+    function ct_collection_sitemap_map_count(PDO $pdo, string $type, string $locale, int $contentCount, int $limit): int {
+        $maps = (int)ceil(max(0, $contentCount) / max(1, $limit));
+        if (in_array($type, ['posts', 'pages'], true) && ct_collection_route_path($pdo, $type, $locale) !== '') {
+            return max(1, $maps);
+        }
+        return $maps;
+    }
+
     function ct_author_locale_preferences(PDO $pdo): array {
         $raw = function_exists('settings_get') ? settings_get($pdo, 'content_translation_author_locales', '') : '';
         $stored = is_string($raw) ? json_decode($raw, true) : [];

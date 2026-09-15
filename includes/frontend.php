@@ -557,7 +557,7 @@ add_filter('sitemap_index_entries', function ($entries, $pdo, $domain, $limit) {
                 : '';
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM post_translations pt INNER JOIN posts p ON p.id = pt.post_id WHERE pt.locale = ? AND pt.status = 'published' AND p.type = ? AND p.is_deleted = 0 AND p.status = 'published'{$routeRequirement}");
             $stmt->execute([$locale, $postType]);
-            $maps = (int)ceil((int)$stmt->fetchColumn() / max(1, (int)$limit));
+            $maps = ct_collection_sitemap_map_count($pdo, $type, $locale, (int)$stmt->fetchColumn(), (int)$limit);
             for ($page = 1; $page <= $maps; $page++) $entries[] = ['loc' => $domain . '/sitemap_' . rawurlencode($locale) . '_' . $type . '_' . $page . '.xml'];
         }
     }
@@ -594,6 +594,10 @@ add_filter('sitemap_locale_rendered', function ($rendered, $locale, $type, $page
     $stmt->execute();
     header('Content-Type: application/xml; charset=utf-8');
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n";
+    if ((int)$pageNum === 1 && in_array($type, ['posts', 'pages'], true) && ct_collection_route_path($pdo, $type, $locale) !== '') {
+        $loc = ct_base_url() . ct_collection_url($pdo, $type, $locale);
+        echo '  <url><loc>' . htmlspecialchars($loc, ENT_XML1) . '</loc></url>' . "\n";
+    }
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $loc = ct_base_url() . ct_post_url((string)$row['slug'], $locale);
         echo '  <url><loc>' . htmlspecialchars($loc, ENT_XML1) . '</loc><lastmod>' . htmlspecialchars(date('c', strtotime((string)$row['changed_at'])), ENT_XML1) . '</lastmod></url>' . "\n";
