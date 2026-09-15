@@ -18,10 +18,16 @@ $files = [
 ];
 $core = getenv('CORE_ROOT') ?: getenv('JY_ROOT');
 if ($core === false || $core === '') {
-    $consumerRoot = dirname($root, 2);
-    $core = is_file($consumerRoot . '/cfg/helpers/media_helpers.php')
-        ? $consumerRoot
-        : dirname(__DIR__, 3) . '/jyavani.lan';
+    $candidate = $root;
+    $core = '';
+    for ($depth = 0; $depth < 4; $depth++) {
+        $candidate = dirname($candidate);
+        if (is_file($candidate . '/cfg/helpers/media_helpers.php')) {
+            $core = $candidate;
+            break;
+        }
+    }
+    if ($core === '') $core = dirname(__DIR__, 3) . '/jyavani.lan';
 }
 $failures = [];
 $checks = 0;

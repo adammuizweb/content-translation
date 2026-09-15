@@ -4,10 +4,16 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $core = getenv('CORE_ROOT') ?: getenv('JY_ROOT');
 if ($core === false || $core === '') {
-    $consumerRoot = dirname($root, 2);
-    $core = is_file($consumerRoot . '/cfg/helpers/hooks.php')
-        ? $consumerRoot
-        : dirname(__DIR__, 3) . '/jyavani.lan';
+    $candidate = $root;
+    $core = '';
+    for ($depth = 0; $depth < 4; $depth++) {
+        $candidate = dirname($candidate);
+        if (is_file($candidate . '/cfg/helpers/hooks.php')) {
+            $core = $candidate;
+            break;
+        }
+    }
+    if ($core === '') $core = dirname(__DIR__, 3) . '/jyavani.lan';
 }
 $publicFixture = sys_get_temp_dir() . '/ct-media-public-' . bin2hex(random_bytes(8));
 mkdir($publicFixture . '/static/img', 0770, true);
