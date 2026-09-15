@@ -4,17 +4,22 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $core = getenv('CORE_ROOT') ?: getenv('JY_ROOT');
 if ($core === false || $core === '') {
-    $candidate = $root;
-    $core = '';
-    for ($depth = 0; $depth < 4; $depth++) {
-        $candidate = dirname($candidate);
-        if (is_file($candidate . '/cfg/helpers/hooks.php')) {
-            $core = $candidate;
-            break;
+    $consumerRoot = dirname($root, 2);
+    if (is_file($consumerRoot . '/cfg/helpers/hooks.php')) {
+        $core = $consumerRoot;
+    } else {
+        $candidate = $root;
+        $core = '';
+        for ($depth = 0; $depth < 6; $depth++) {
+            $candidate = dirname($candidate);
+            if (is_file($candidate . '/jyavani.lan/cfg/helpers/hooks.php')) {
+                $core = $candidate . '/jyavani.lan';
+                break;
+            }
         }
     }
-    if ($core === '') $core = dirname(__DIR__, 3) . '/jyavani.lan';
 }
+if ($core === '') throw new RuntimeException('Compatible Core test root not found.');
 $publicFixture = sys_get_temp_dir() . '/ct-media-public-' . bin2hex(random_bytes(8));
 mkdir($publicFixture . '/static/img', 0770, true);
 define('PUBLIC_PATH', $publicFixture);

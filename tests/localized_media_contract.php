@@ -18,17 +18,22 @@ $files = [
 ];
 $core = getenv('CORE_ROOT') ?: getenv('JY_ROOT');
 if ($core === false || $core === '') {
-    $candidate = $root;
-    $core = '';
-    for ($depth = 0; $depth < 4; $depth++) {
-        $candidate = dirname($candidate);
-        if (is_file($candidate . '/cfg/helpers/media_helpers.php')) {
-            $core = $candidate;
-            break;
+    $consumerRoot = dirname($root, 2);
+    if (is_file($consumerRoot . '/cfg/helpers/media_helpers.php')) {
+        $core = $consumerRoot;
+    } else {
+        $candidate = $root;
+        $core = '';
+        for ($depth = 0; $depth < 6; $depth++) {
+            $candidate = dirname($candidate);
+            if (is_file($candidate . '/jyavani.lan/cfg/helpers/media_helpers.php')) {
+                $core = $candidate . '/jyavani.lan';
+                break;
+            }
         }
     }
-    if ($core === '') $core = dirname(__DIR__, 3) . '/jyavani.lan';
 }
+if ($core === '') throw new RuntimeException('Compatible Core test root not found.');
 $failures = [];
 $checks = 0;
 $check = static function (bool $condition, string $message) use (&$failures, &$checks): void {
