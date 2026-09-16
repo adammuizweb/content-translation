@@ -147,9 +147,9 @@ $check(str_contains($files['editor'], '/admin/modal_img/index.php?embedded=1')
     && str_contains($files['editor'], "[{ color: [] }, { background: [] }]")
     && str_contains($files['editor'], "['link', 'image', 'video']")
     && str_contains($files['editor'], "toolbar.addHandler('video'")
-    && str_contains($files['editor'], '/admin/modal_file/index.php?embedded=1')
+    && str_contains($files['editor'], '/admin/modal_file/index.php?embedded=1&tab=library')
     && str_contains($files['editor'], 'window.generateFileShortcode'),
-    'translation editor uses the canonical modal route and a full Quill toolbar with media selection');
+    'translation editor opens the selectable Core file library from its full Quill toolbar');
 $check(str_contains($files['editor'], 'id="ct-quill-area"')
     && str_contains($files['editor'], 'id="ct-codemirror-area"')
     && str_contains($files['editor'], 'name="editor_mode"')

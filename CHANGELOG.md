@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.9 - 2026-09-16
+
+- Open the Core file library directly from the translation editor's Quill video toolbar so selected files can be inserted.
+
 ## 1.16.8 - 2026-09-15
 
 - Move localized Post and Page collection landing URLs into Core's content-list sitemap while keeping translated item maps count-driven.

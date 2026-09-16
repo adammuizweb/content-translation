@@ -325,7 +325,7 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
           return;
         }
         window.openFileSelector({
-          url: <?= json_encode($base . '/admin/modal_file/index.php?embedded=1', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+          url: <?= json_encode($base . '/admin/modal_file/index.php?embedded=1&tab=library', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
           maxWidth: '980px'
         }).then(function(detail){
           const file = typeof window.normalizeFile === 'function' ? window.normalizeFile(detail) : detail;
