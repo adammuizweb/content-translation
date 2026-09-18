@@ -41,6 +41,18 @@ $check(str_contains($sources['admin'], "shortcode_layout_editor_after_header") &
 $check(str_contains($sources['packages'], 'function ct_theme_section_template_usages') && str_contains($sources['packages'], "LOCATE('widget:theme_section'"), 'renderer usage lookup parses bounded package-composed Theme Templates');
 $check(str_contains($sources['editor'], "\$_GET['section']") && str_contains($sources['editor'], 'ct-package-section--focused') && str_contains($sources['editor'], "adiwira_safe_return_to"), 'package editor focuses the requested section and returns safely to its source renderer');
 $check(str_contains($sources['editor'], 'theme_section_preview_document_shell') && str_contains($sources['editor'], 'previewBefore +') && substr_count($sources['editor'], 'sandbox="allow-same-origin"') >= 2 && str_contains($sources['editor'], "querySelectorAll('script')"), 'source and translated previews reuse the script-free sandboxed Core theme-asset document shell');
+$check(str_contains($sources['editor'], 'content_editor_render_mount')
+    && str_contains($sources['editor'], "'name' => 'section_html[]'")
+    && str_contains($sources['editor'], 'window.JyavaniEditor.mount(root')
+    && str_contains($sources['editor'], "document.addEventListener('DOMContentLoaded', initThemeSectionEditors")
+    && str_contains($sources['editor'], 'editor.snapshot()')
+    && str_contains($sources['editor'], 'editor.markSaved(submitted[index])')
+    && !str_contains($sources['editor'], 'CodeMirror.fromTextArea'),
+    'Theme Section HTML initializes after dependencies and uses independent scoped Core editor mounts');
+$check(str_contains($sources['save'], "\$sectionHtml = \$_POST['section_html'] ?? null")
+    && str_contains($sources['save'], 'count($sectionHtml) !== count($sections)')
+    && str_contains($sources['save'], "\$section['html'] = (string)\$sectionHtml[\$index]"),
+    'package endpoint binds the parallel mounted-editor values to validated section indexes');
 $check(substr_count($sources['packages'], 'FOR UPDATE') >= 2 && str_contains($sources['packages'], 'beginTransaction()'), 'package save uses a transaction and source/translation row locks');
 $check(str_contains($sources['packages'], 'loadedSourceFingerprint') && str_contains($sources['packages'], 'loadedTranslationState'), 'package save checks source and translation optimistic locks');
 $check(str_contains($sources['packages'], 'existing package identity or order no longer matches'), 'package save enforces existing v1 identity and order server-side');

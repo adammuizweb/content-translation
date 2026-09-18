@@ -31,10 +31,21 @@ $slug = trim((string)($_POST['slug'] ?? ''));
 $metaDescription = trim((string)($_POST['meta_description'] ?? ''));
 $status = (string)($_POST['status'] ?? 'draft');
 $sections = $_POST['sections'] ?? null;
-if ($postId <= 0 || $locale === '' || !is_array($sections) || !in_array($locale, ct_enabled_locales($pdo), true)) {
+$sectionHtml = $_POST['section_html'] ?? null;
+if ($postId <= 0 || $locale === '' || !is_array($sections) || !array_is_list($sections)
+    || !is_array($sectionHtml) || !array_is_list($sectionHtml) || count($sectionHtml) !== count($sections)
+    || !in_array($locale, ct_enabled_locales($pdo), true)) {
     echo json_encode(['error' => __('Invalid Theme Template, locale, or sections.')]);
     return;
 }
+foreach ($sections as $index => &$section) {
+    if (!is_array($section) || !is_scalar($sectionHtml[$index])) {
+        echo json_encode(['error' => __('Invalid Theme Template, locale, or sections.')]);
+        return;
+    }
+    $section['html'] = (string)$sectionHtml[$index];
+}
+unset($section);
 $homepage = ct_is_homepage_post($pdo, $postId);
 if (!$homepage && $slug === '' && $title !== '') {
     $slug = function_exists('cms_slugify') ? (string)cms_slugify($title) : strtolower(trim((string)preg_replace('/[^a-zA-Z0-9]+/', '-', $title), '-'));

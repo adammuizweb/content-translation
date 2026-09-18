@@ -100,7 +100,8 @@ in the render context. Source and translated rendering are displayed in
 sandboxed preview frames that load the active theme's declared styles. Theme
 JavaScript remains disabled, so the preview is visual rather than interactive.
 The translated controls expose semantic title,
-summary, URL, and link label fields plus an advanced raw HTML CodeMirror field.
+summary, URL, and link label fields plus an advanced HTML field mounted through
+Core's scoped Quill/CodeMirror contract and initialized in CodeMirror mode.
 The source section identities and order are read-only.
 
 The page-level translated title, slug, meta description, and draft/published
@@ -334,8 +335,8 @@ with an empty title or slug are omitted until those fields are completed.
 
 ## Database-backed partials
 
-Database `theme` posts continue to use the manual CodeMirror editor so template
-markup, placeholders, scripts, styles, and structural HTML are preserved. A
+Database `theme` posts use the scoped Core editor initialized in CodeMirror mode
+so template markup, placeholders, scripts, styles, and structural HTML are preserved. A
 published direct translation is available at `/{locale}/{slug}/`.
 
 A custom theme post can be assigned to slots such as `header`, `main.homepage`,

@@ -30,7 +30,7 @@ if ($postId <= 0 || $locale === '') {
 
 $localizedMediaSupported = function_exists('ct_localized_media_supported') && ct_localized_media_supported();
 $mediaColumns = $localizedMediaSupported ? ', thumbnail_media_id, thumbnail, youtube' : '';
-$stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, created_by{$mediaColumns} FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, type, title, slug, content, meta, status, publish_at_utc, created_by{$mediaColumns} FROM posts WHERE id = ? AND is_deleted = 0 LIMIT 1");
 $stmt->execute([$postId]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$post || !ct_user_can_view_post_representation($pdo, $post)) {
@@ -67,9 +67,6 @@ $translation = $isSource ? [
     'meta_description' => is_array($sourceMeta) ? (string)($sourceMeta['meta_tags']['description'] ?? '') : '',
     'status' => ct_post_source_status($pdo, $post),
 ] : ($translationRow ?? ['title' => '', 'slug' => '', 'content' => '', 'meta_description' => '', 'status' => 'published']);
-$usesCodeMirror = $post['type'] === 'theme'
-    || ct_content_requires_codemirror((string)$post['content'])
-    || ct_content_requires_codemirror((string)$translation['content']);
 $publishedTranslation = $isSource ? (ct_source_post_is_public($pdo, $post) ? $translation : null) : ct_get_published_translation($pdo, $postId, $locale);
 $previewUrl = ct_post_url((string)($translation['slug'] !== '' ? $translation['slug'] : $post['slug']), $locale);
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
@@ -104,6 +101,31 @@ $pickerUrl = $localizedMediaSupported ? $pickerBaseUrl . '&' . media_picker_quer
 ]) : '';
 $localeLabel = $localizedMediaSupported ? ct_media_locale_label($locale) : strtoupper($locale);
 $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLocale) : strtoupper($sourceLocale);
+$aiAvailable = !$isSource
+    && $canEdit
+    && in_array($post['type'], ['article', 'page'], true)
+    && function_exists('plugin_is_active')
+    && plugin_is_active('jyavani-ai')
+    && defined('JAI_VERSION')
+    && version_compare((string)JAI_VERSION, '0.4.0', '>=')
+    && function_exists('user_can')
+    && user_can($pdo, ct_current_user_id(), 'plugin.jyavani-ai.assistant.generate');
+if ($aiAvailable) {
+    $aiStatusHook = $post['type'] === 'article' ? 'admin_post_editor_status' : 'admin_page_editor_status';
+    $aiSourceStatus = apply_filters($aiStatusHook, (string)$post['status'], $post, $pdo);
+    if (!is_string($aiSourceStatus) || !in_array($aiSourceStatus, ['draft', 'published', 'private'], true)) {
+        $aiAvailable = false;
+    } else {
+        $aiSourceStatus = function_exists('content_schedule_editor_status')
+            ? content_schedule_editor_status($aiSourceStatus, $post)
+            : $aiSourceStatus;
+        $publishPermission = $post['type'] === 'article' ? 'core.posts.publish' : 'core.pages.publish';
+        $aiAvailable = $aiSourceStatus === 'draft' || user_can($pdo, ct_current_user_id(), $publishPermission, [
+            'owner_id' => (int)($post['created_by'] ?? 0),
+        ]);
+    }
+}
+$aiEndpoint = $base . '/?page=admin/tools/jyavani-ai/generate&action=generate';
 ?>
 
 <div class="ct-admin ct-editor">
@@ -138,7 +160,7 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
         <div class="ct-field"><label><?= __('Status') ?></label><div class="ct-readonly"><?= h(ucfirst((string)$translation['status'])) ?></div></div>
         <div class="ct-field"><label><?= __('Content') ?></label><pre class="ct-readonly ct-readonly-content ct-source-code"><?= h((string)$translation['content']) ?></pre></div>
       <?php else: ?>
-      <form id="ct-form">
+      <form id="ct-form" data-unsaved-guard>
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="post_id" value="<?= $postId ?>">
         <input type="hidden" name="locale" value="<?= h($locale) ?>">
@@ -184,15 +206,15 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
         </fieldset>
         <?php endif; ?>
         <div class="ct-field">
-          <label><?= __('Content') ?></label>
-          <div class="ct-editor-modes">
-            <label><input type="radio" name="editor_mode" value="quill"<?= !$usesCodeMirror ? ' checked' : '' ?>> <?= __('Quill (rich)') ?></label>
-            <label><input type="radio" name="editor_mode" value="codemirror"<?= $usesCodeMirror ? ' checked' : '' ?>> <?= __('CodeMirror (HTML)') ?></label>
-          </div>
-          <p class="muted ct-editor-hint" id="ct-editor-hint"<?= $usesCodeMirror ? '' : ' hidden' ?>><?= __('Complex HTML detected. CodeMirror preserves the source markup.') ?></p>
-          <textarea id="ct-content" name="content" hidden><?= h((string)$translation['content']) ?></textarea>
-          <div id="ct-quill-area"<?= $usesCodeMirror ? ' hidden' : '' ?>><div id="ct-quill" class="adam-quill" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>"><?= $usesCodeMirror ? '' : (string)$translation['content'] ?></div></div>
-          <div id="ct-codemirror-area"<?= $usesCodeMirror ? '' : ' hidden' ?>><textarea id="ct-codemirror" dir="ltr"><?= h((string)$translation['content']) ?></textarea></div>
+          <?= content_editor_render_mount([
+              'id' => 'ct-content-editor',
+              'name' => 'content',
+              'mode_name' => 'ct_editor_mode',
+              'value' => (string)$translation['content'],
+              'initial_mode' => $post['type'] === 'theme' ? 'codemirror' : 'quill',
+              'direction' => $isRtl ? 'rtl' : 'ltr',
+              'label' => __('Content'),
+          ]) ?>
         </div>
 
         <div class="ct-actions">
@@ -216,11 +238,7 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
         </div>
         <div class="ct-field">
           <label><?= __('Content') ?></label>
-          <?php if ($usesCodeMirror): ?>
-            <pre class="ct-readonly ct-readonly-content ct-source-code"><?= h((string)$post['content']) ?></pre>
-          <?php else: ?>
-            <pre class="ct-readonly ct-readonly-content"><?= h((string)$post['content']) ?></pre>
-          <?php endif; ?>
+          <pre class="ct-readonly ct-readonly-content ct-source-code"><?= h((string)$post['content']) ?></pre>
         </div>
       </div>
     </details>
@@ -240,134 +258,13 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
 </div>
 
 <script>
-(function(){
+function initContentTranslationEditor(){
   const form = document.getElementById('ct-form');
-  const contentField = document.getElementById('ct-content');
-  let quill = null;
-  let codeMirror = null;
-  let activeEditorMode = <?= json_encode($usesCodeMirror ? 'codemirror' : 'quill') ?>;
   const pickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'featured', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inlinePickerContext = <?= json_encode(['surface' => 'admin.content.translation', 'consumer' => $mediaConsumer, 'resource_id' => $postId, 'field' => 'content', 'content_locale' => $locale, 'selection_mode' => 'review'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const inheritedFeaturedPreview = <?= json_encode(['url' => $inheritedFeaturedUrl, 'label' => $inheritedFeaturedUrl ? __('Source thumbnail') : ''], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const emptyFeaturedLabel = <?= json_encode(__('No image selected'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   let selectedFeaturedPreview = <?= json_encode(['url' => $selectedFeaturedUrl, 'label' => $featuredRow ? (string)($featuredRow['filename'] ?? $featuredRow['title'] ?? '') : '', 'compatible' => $featuredCompatible], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-  const fullToolbar = [
-    [{ header: [1, 2, 3, 4, 5, 6, false] }],
-    ['bold', 'italic', 'underline', 'strike'],
-    [{ color: [] }, { background: [] }],
-    [{ script: 'sub' }, { script: 'super' }],
-    [{ list: 'ordered' }, { list: 'bullet' }],
-    [{ indent: '-1' }, { indent: '+1' }],
-    [{ align: [] }],
-    ['blockquote', 'code-block'],
-    ['link', 'image', 'video'],
-    [{ size: ['small', false, 'large', 'huge'] }],
-    ['clean']
-  ];
-
-  if (document.getElementById('ct-codemirror') && window.CodeMirror) {
-    codeMirror = CodeMirror.fromTextArea(document.getElementById('ct-codemirror'), {
-      mode: 'htmlmixed',
-      lineNumbers: true,
-      styleActiveLine: true,
-      matchBrackets: true,
-      autoCloseBrackets: true,
-      autoCloseTags: true,
-      lineWrapping: true,
-      theme: 'dracula',
-      foldGutter: true,
-      gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter']
-    });
-    codeMirror.setSize('100%', '58vh');
-    codeMirror.on('change', function(){ if (activeEditorMode === 'codemirror') contentField.value = codeMirror.getValue(); });
-  }
-  if (document.getElementById('ct-quill') && window.Quill) {
-    quill = new Quill('#ct-quill', {
-      theme: 'snow',
-      modules: { toolbar: fullToolbar },
-      placeholder: window.QUILL_PLACEHOLDER || <?= json_encode(__('Write article content here...')) ?>
-    });
-    const toolbar = quill.getModule('toolbar');
-    if (toolbar && typeof toolbar.addHandler === 'function') {
-      toolbar.addHandler('image', function(){
-        const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
-        if (typeof window.openMediaSelector !== 'function') return;
-        window.openMediaSelector({
-          url: <?= json_encode($pickerBaseUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-          context: inlinePickerContext,
-          maxWidth: '980px'
-        }).then(function(detail){
-          if (!detail) return;
-          if (detail.extensions?.content_translation?.available === false) {
-            notify('error', <?= json_encode(__('This media is not available for the content language.')) ?>);
-            return;
-          }
-          const url = String(detail.protected_url || detail.url || '');
-          if (!url) return;
-          quill.insertEmbed(range.index, 'image', url, 'user');
-          quill.setSelection(range.index + 1, 0);
-          setTimeout(function(){
-            const images = Array.from(quill.root.querySelectorAll('img')).filter(function(image){ return image.getAttribute('src') === url; });
-            const image = images[images.length - 1];
-            if (!image) return;
-            if (detail.alt) image.setAttribute('alt', String(detail.alt));
-            if (detail.title) image.setAttribute('title', String(detail.title));
-            if (detail.caption) image.setAttribute('data-caption', String(detail.caption));
-            if (Number(detail.id) > 0) image.setAttribute('data-media-id', String(detail.id));
-          }, 0);
-        }).catch(function(error){ console.warn('[content-translation] media picker failed', error); });
-      });
-      toolbar.addHandler('video', function(){
-        const range = quill.getSelection() || { index: quill.getLength(), length: 0 };
-        if (quill.root) quill.root.blur();
-        if (typeof window.openFileSelector !== 'function') {
-          notify('error', <?= json_encode(__('File selector is unavailable.')) ?>);
-          return;
-        }
-        window.openFileSelector({
-          url: <?= json_encode($base . '/admin/modal_file/index.php?embedded=1&tab=library', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-          maxWidth: '980px'
-        }).then(function(detail){
-          const file = typeof window.normalizeFile === 'function' ? window.normalizeFile(detail) : detail;
-          const html = typeof window.generateFileShortcode === 'function' ? window.generateFileShortcode(file) : '';
-          if (!html) return;
-          quill.clipboard.dangerouslyPasteHTML(range.index, html);
-          quill.setSelection(range.index + 2, 0);
-        }).catch(function(error){ console.warn('[content-translation] file picker failed', error); });
-      });
-    }
-    quill.on('text-change', function(){ if (activeEditorMode === 'quill') contentField.value = quill.root.innerHTML; });
-  }
-
-  const complexPattern = /<(script|style|iframe|embed|object|form|svg|canvas|php|link|meta|table|thead|tbody|tfoot|tr|th|td)[\s>]|on[a-z]+\s*=|style\s*=/i;
-  function setEditorMode(mode) {
-    const quillArea = document.getElementById('ct-quill-area');
-    const codeMirrorArea = document.getElementById('ct-codemirror-area');
-    const hint = document.getElementById('ct-editor-hint');
-    if (mode === 'quill') {
-      const html = codeMirror ? codeMirror.getValue() : contentField.value;
-      if (complexPattern.test(html)) {
-        form.querySelector('[name="editor_mode"][value="codemirror"]').checked = true;
-        notify('error', <?= json_encode(__('Complex HTML detected. CodeMirror preserves the source markup.')) ?>);
-        return;
-      }
-      if (quill && quill.root.innerHTML !== html) quill.clipboard.dangerouslyPasteHTML(html);
-      contentField.value = quill ? quill.root.innerHTML : html;
-    } else {
-      const html = quill && activeEditorMode === 'quill' ? quill.root.innerHTML : contentField.value;
-      if (codeMirror && codeMirror.getValue() !== html) codeMirror.setValue(html);
-      contentField.value = codeMirror ? codeMirror.getValue() : html;
-      setTimeout(function(){ if (codeMirror) codeMirror.refresh(); }, 0);
-    }
-    activeEditorMode = mode;
-    quillArea.hidden = mode !== 'quill';
-    codeMirrorArea.hidden = mode !== 'codemirror';
-    hint.hidden = mode !== 'codemirror' || !complexPattern.test(contentField.value);
-  }
-  form.querySelectorAll('[name="editor_mode"]').forEach(function(input){
-    input.addEventListener('change', function(){ if (input.checked) setEditorMode(input.value); });
-  });
-
   function notify(type, msg) {
     if (window.NewNotifToast && typeof window.NewNotifToast.show === 'function') {
       window.NewNotifToast.show({ message: msg, type: type });
@@ -377,10 +274,99 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
     if (typeof toast === 'function') toast(msg, type);
   }
 
-  function getContent() {
-    if (activeEditorMode === 'codemirror') return codeMirror ? codeMirror.getValue() : contentField.value;
-    return quill ? quill.root.innerHTML : contentField.value;
-  }
+  const editor = window.JyavaniEditor.mount('#ct-content-editor', {
+    context: {
+      owner: 'plugin.content-translation',
+      resourceType: <?= json_encode((string)$post['type']) ?>,
+      operation: 'edit',
+      resourceId: <?= $postId ?>,
+      locale: <?= json_encode($locale) ?>,
+      canUpdate: true,
+      adminBasePath: <?= json_encode($base) ?>
+    },
+    mediaUrl: <?= json_encode($pickerBaseUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    fileUrl: <?= json_encode($base . '/admin/modal_file/index.php?embedded=1&tab=library', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    mediaContext: inlinePickerContext,
+    adapters: {
+      pickMedia: function(request) {
+        return request.defaults.pickMedia(request).then(function(detail) {
+          const media = detail?.media && typeof detail.media === 'object' ? detail.media : detail;
+          if (media && media.extensions?.content_translation?.available === false) {
+            throw new Error(<?= json_encode(__('This media is not available for the content language.')) ?>);
+          }
+          return detail;
+        });
+      }
+    },
+    confirmLossy: function() {
+      return window.confirm(<?= json_encode(__('Complex HTML detected. Switching to Quill removes unsupported markup. Continue?')) ?>);
+    }
+  });
+  editor.on('error', function(event) {
+    notify('error', event.error?.message || <?= json_encode(__('Editor action failed.')) ?>);
+  });
+
+  <?php if ($aiAvailable): ?>
+  let aiRequestPending = false;
+  editor.registerButton({
+    id: 'plugin.content-translation.ai-translate',
+    label: <?= json_encode(__('Translate with AI')) ?>,
+    title: <?= json_encode(__('Translate the source content into this language with Jyavani AI.')) ?>,
+    priority: 20,
+    enabled: function() { return !aiRequestPending; },
+    onActivate: async function() {
+      const revision = editor.getRevision();
+      if (editor.getContent().trim() !== '' && !window.confirm(<?= json_encode(__('Replace the current translation with an AI-generated draft?')) ?>)) return;
+      aiRequestPending = true;
+      notify('info', <?= json_encode(__('Jyavani AI is translating the source content...')) ?>);
+      const controller = new AbortController();
+      const timeout = window.setTimeout(function(){ controller.abort(); }, 80000);
+      try {
+        const response = await fetch(<?= json_encode($aiEndpoint, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>, {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': form.elements.csrf_token.value,
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({
+            resource_type: <?= json_encode((string)$post['type']) ?>,
+            editor_operation: 'edit',
+            resource_id: <?= $postId ?>,
+            editor_mode: editor.getMode(),
+            operation: 'translate',
+            target: 'document',
+            instruction: <?= json_encode('Translate into ' . $localeLabel . '. Preserve HTML structure, links, media references, shortcodes, and factual meaning.', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+            content: <?= json_encode((string)$post['content'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+            revision: revision
+          })
+        });
+        const data = await response.json().catch(function(){ return null; });
+        if (!response.ok || !data || data.ok !== true || typeof data.html !== 'string') {
+          throw new Error(data?.error || <?= json_encode(__('AI translation failed.')) ?>);
+        }
+        try {
+          editor.setContent(data.html, { ifRevision: revision, source: 'plugin.content-translation.ai' });
+        } catch (error) {
+          if (error?.code !== 'EDITOR_LOSSY_MODE_CHANGE') throw error;
+          await editor.setMode('codemirror');
+          editor.setContent(data.html, { ifRevision: editor.getRevision(), source: 'plugin.content-translation.ai' });
+        }
+        editor.focus();
+        notify('success', <?= json_encode(__('AI translation draft is ready for review.')) ?>);
+      } catch (error) {
+        notify('error', error?.name === 'AbortError' ? <?= json_encode(__('AI translation timed out.')) ?> : (error?.message || <?= json_encode(__('AI translation failed.')) ?>));
+      } finally {
+        window.clearTimeout(timeout);
+        aiRequestPending = false;
+      }
+    }
+  });
+  <?php endif; ?>
 
   function renderFeaturedPreview() {
     const preview = document.getElementById('ct-featured-preview');
@@ -435,12 +421,21 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
 
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
+    const submitted = editor.snapshot();
+    const guard = window.ADIWIRA && window.ADIWIRA.unsavedGuard;
+    const guardSnapshot = guard && typeof guard.capture === 'function' ? guard.capture(form) : null;
     const fd = new FormData(form);
-    fd.set('content', getContent());
+    fd.set('content', submitted.content);
     try {
       const res = await fetch('<?= $saveUrl ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
       const data = await res.json();
-      if (data.success && data.translation_state) form.elements.translation_state.value = data.translation_state;
+      if (data.success && data.translation_state) {
+        form.elements.translation_state.value = data.translation_state;
+        editor.markSaved(submitted);
+        if (guard && typeof guard.markSaved === 'function') {
+          guard.markSaved(guardSnapshot, { translation_state: data.translation_state, content: submitted.content }, form);
+        }
+      }
       notify(data.success ? 'success' : 'error', data.success ? (data.message || '<?= __('Translation saved.') ?>') : (data.error || '<?= __('Save failed.') ?>'));
     } catch (err) {
       notify('error', '<?= __('Network error.') ?>');
@@ -481,6 +476,11 @@ $sourceLocaleLabel = $localizedMediaSupported ? ct_media_locale_label($sourceLoc
       notify('error', '<?= __('Network error.') ?>');
     }
   });
-})();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initContentTranslationEditor, { once: true });
+} else {
+  initContentTranslationEditor();
+}
 </script>
 <?php endif; ?>

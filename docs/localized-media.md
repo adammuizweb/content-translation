@@ -1,6 +1,6 @@
 # Localized Media
 
-Localized media is available in Content Translation 1.14.0. The current editor and localized URL responses require Jyavani Core 2.3.122 or newer. Its generic Core media extension contract provides contextual media admin hooks, mutation metadata, resource lifecycle events, `media_data`, `featured_media`, stable featured-media IDs, and bounded modal loading.
+Localized media is available in Content Translation 1.14.0. Content Translation 1.17.0 requires Jyavani Core 2.3.140 or newer for the scoped Quill/CodeMirror mount API. Core also provides contextual media admin hooks, mutation metadata, resource lifecycle events, `media_data`, `featured_media`, stable featured-media IDs, and bounded modal loading.
 
 ## Metadata model
 
@@ -23,7 +23,7 @@ Each post or page translation may inherit the source thumbnail, select a stable 
 
 Incompatible media may be retained while the translation is a draft. Publishing validates the selection again under the same transaction locks as the text translation. Text and featured selection share one optimistic editor state and commit or roll back together. Deleting a translation removes its selection in the same transaction.
 
-The Core picker is opened with `selection_mode=review` and exposes locale diagnostics to the editor. An incompatible featured selection is warned immediately, and an incompatible inline image is not inserted. Inline images retain a stable `data-media-id` when Core returns an ID. Article pickers identify their consumer as `post`; Page pickers use `page`.
+The Core-mounted editor opens its contextual picker with `selection_mode=review` and exposes locale diagnostics to Content Translation's adapter. An incompatible featured selection is warned immediately, and an incompatible inline image is not inserted. Inline images retain a stable `data-media-id` when Core returns an ID. Article pickers identify their consumer as `post`; Page pickers use `page`. Core owns only the draft buffer and editor engines; locale policy, authorization, optimistic state, sanitization, and persistence remain plugin-owned.
 
 Core's YouTube thumbnail remains first in display-image precedence. Localized featured selection controls only the featured-media branch used when no valid YouTube thumbnail is available.
 

@@ -74,7 +74,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
     <div class="ct-focus-notice"><?= __('Opened from the source renderer. The matching section is highlighted below:') ?> <code><?= h($focusSection) ?></code></div>
   <?php endif; ?>
 
-  <form id="ct-theme-section-form">
+  <form id="ct-theme-section-form" data-unsaved-guard>
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
     <input type="hidden" name="post_id" value="<?= $postId ?>">
     <input type="hidden" name="locale" value="<?= h($locale) ?>">
@@ -128,7 +128,16 @@ $previewShell = function_exists('theme_section_preview_document_shell')
               <details class="ct-advanced-html">
                 <summary><?= __('Advanced translated HTML') ?></summary>
                 <p class="muted"><?= __('Unsafe HTML, URLs, and CSS are rejected on save. Existing legacy HTML permits text and accessibility-label edits while structure and executable content remain unchanged.') ?></p>
-                <textarea class="ct-section-html" name="sections[<?= $index ?>][html]" dir="ltr"><?= h($translatedHtml) ?></textarea>
+                <div data-ct-section-editor="<?= $index ?>">
+                  <?= content_editor_render_mount([
+                      'id' => 'ct-section-editor-' . $index,
+                      'name' => 'section_html[]',
+                      'mode_name' => 'section_editor_mode_' . $index,
+                      'value' => $translatedHtml,
+                      'initial_mode' => 'codemirror',
+                      'direction' => 'ltr',
+                  ]) ?>
+                </div>
               </details>
             </section>
           </div>
@@ -143,7 +152,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
 </div>
 
 <script>
-(function(){
+function initThemeSectionEditors(){
   const form = document.getElementById('ct-theme-section-form');
   const previewBefore = <?= json_encode($previewShell['before'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   const previewAfter = <?= json_encode($previewShell['after'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
@@ -155,16 +164,25 @@ $previewShell = function_exists('theme_section_preview_document_shell')
   const focusedSection = document.querySelector('.ct-package-section--focused');
   if (focusedSection) window.setTimeout(function(){ focusedSection.scrollIntoView({behavior:'smooth',block:'start'}); }, 120);
   const editors = [];
-  form.querySelectorAll('.ct-section-html').forEach(function(textarea){
-    let editor = null;
-    if (window.CodeMirror) {
-      editor = CodeMirror.fromTextArea(textarea, {mode:'htmlmixed',lineNumbers:true,lineWrapping:true,matchBrackets:true,autoCloseTags:true,theme:'dracula'});
-      editor.setSize('100%', '320px');
-    }
-    const preview = textarea.closest('.ct-package-translation').querySelector('.ct-translated-preview');
-    const update = function(){ preview.srcdoc = previewDocument(editor ? editor.getValue() : textarea.value); };
-    if (editor) editor.on('change', update); else textarea.addEventListener('input', update);
-    editors.push({textarea:textarea, editor:editor});
+  form.querySelectorAll('[data-ct-section-editor]').forEach(function(container){
+    const root = container.querySelector('[data-jyavani-editor-mount]');
+    const editor = window.JyavaniEditor.mount(root, {
+      context: {
+        owner: 'plugin.content-translation',
+        resourceType: 'theme-section',
+        operation: 'edit',
+        resourceId: <?= $postId ?>,
+        locale: <?= json_encode($locale) ?>,
+        canUpdate: true,
+        adminBasePath: <?= json_encode($base) ?>
+      },
+      codeHeight: '320px'
+    });
+    const preview = container.closest('.ct-package-translation').querySelector('.ct-translated-preview');
+    const update = function(){ preview.srcdoc = previewDocument(editor.getContent()); };
+    editor.on('change', update);
+    editor.on('error', function(event){ notify('error', event.error?.message || <?= json_encode(__('Editor action failed.')) ?>); });
+    editors.push(editor);
   });
   function notify(type, message) {
     if (window.NewNotifToast && typeof window.NewNotifToast.show === 'function') return window.NewNotifToast.show({message:message,type:type});
@@ -173,13 +191,25 @@ $previewShell = function_exists('theme_section_preview_document_shell')
   }
   form.addEventListener('submit', async function(event){
     event.preventDefault();
-    editors.forEach(function(item){ if (item.editor) item.textarea.value = item.editor.getValue(); });
+    const submitted = editors.map(function(editor){ return editor.snapshot(); });
+    const guard = window.ADIWIRA && window.ADIWIRA.unsavedGuard;
+    const guardSnapshot = guard && typeof guard.capture === 'function' ? guard.capture(form) : null;
+    const body = new FormData(form);
+    body.delete('section_html[]');
+    submitted.forEach(function(snapshot){ body.append('section_html[]', snapshot.content); });
     try {
-      const response = await fetch(<?= json_encode($saveUrl) ?>, {method:'POST',body:new FormData(form),credentials:'same-origin'});
+      const response = await fetch(<?= json_encode($saveUrl) ?>, {method:'POST',body:body,credentials:'same-origin'});
       const data = await response.json();
       if (!data.success) return notify('error', data.error || <?= json_encode(__('Save failed.')) ?>);
       form.elements.translation_state.value = data.translation_state;
       form.elements.source_fingerprint.value = data.source_fingerprint;
+      editors.forEach(function(editor, index){ editor.markSaved(submitted[index]); });
+      if (guard && typeof guard.markSaved === 'function') {
+        guard.markSaved(guardSnapshot, {
+          translation_state: data.translation_state,
+          source_fingerprint: data.source_fingerprint
+        }, form);
+      }
       const state = document.getElementById('ct-source-state');
       state.className = 'ct-source-state ct-source-state--current';
       state.textContent = <?= json_encode(__('Current')) ?>;
@@ -205,5 +235,10 @@ $previewShell = function_exists('theme_section_preview_document_shell')
       notify('error', <?= json_encode(__('Network error.')) ?>);
     }
   });
-})();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initThemeSectionEditors, { once: true });
+} else {
+  initThemeSectionEditors();
+}
 </script>

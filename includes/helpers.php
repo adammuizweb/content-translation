@@ -1976,13 +1976,6 @@ if (!function_exists('ct_ensure_schema')) {
         return ($https ? 'https' : 'http') . '://' . $host;
     }
 
-    function ct_content_requires_codemirror(string $content): bool {
-        return (bool) preg_match(
-            '/<(script|style|iframe|embed|object|form|svg|canvas|php|link|meta|table|thead|tbody|tfoot|tr|th|td)[\s>]|on[a-z]+\s*=|style\s*=/i',
-            $content
-        );
-    }
-
     function ct_render_not_found(): never {
         http_response_code(404);
         $path = defined('FRONTEND_404_PATH')

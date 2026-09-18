@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.0 - 2026-09-18
+
+- Move post, page, and Theme Section translation editing onto the scoped Jyavani Core Quill/CodeMirror mount contract.
+- Preserve plugin-owned authorization, locale/media policy, optimistic locking, sanitization, previews, and persistence around Core-managed draft buffers.
+- Add an optional revision-safe “Translate with AI” action when Jyavani AI 0.4.0 or newer is active and authorized.
+- Delay mounted-editor initialization until Core dependencies are loaded and keep their canonical fields visible to the unsaved-change guard.
+- Require Jyavani Core 2.3.140 for the scoped content-editor dependency and mount API.
+
 ## 1.16.9 - 2026-09-16
 
 - Open the Core file library directly from the translation editor's Quill video toolbar so selected files can be inserted.

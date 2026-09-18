@@ -122,8 +122,8 @@ $check(str_contains($files['editor'], 'media_picker_query')
     && str_contains($files['editor'], 'YouTube remains the first display-image source'),
     'post/page editor sends explicit picker context, supports nullable overrides, and states YouTube precedence');
 $check(str_contains($files['editor'], "\$post['type'] === 'page' ? 'page' : 'post'")
-    && str_contains($files['editor'], 'detail.extensions?.content_translation?.available')
-    && str_contains($files['editor'], "image.setAttribute('data-media-id'")
+    && str_contains($files['editor'], 'media.extensions?.content_translation?.available')
+    && str_contains($files['editor'], 'request.defaults.pickMedia(request)')
     && str_contains($files['editor'], 'This media is not available for the content language.'),
     'picker validates page/post consumers and immediately consumes locale availability diagnostics');
 $check(str_contains($files['editor'], 'media_resolve_featured')
@@ -140,22 +140,20 @@ $check(str_contains($files['editor'], 'pattern="[a-zA-Z0-9_\\/\\-]*"')
     && !str_contains($files['editor'] . $files['theme_editor'], 'pattern="[a-zA-Z0-9_\\-/]*"'),
     'translation slug patterns remain valid under browser RegExp v semantics');
 $check(str_contains($files['editor'], '/admin/modal_img/index.php?embedded=1')
-    && str_contains((string)file_get_contents($root . '/plugin.json'), '"media-selector"')
-    && str_contains((string)file_get_contents($root . '/plugin.json'), '"file-selector"')
+    && str_contains((string)file_get_contents($root . '/plugin.json'), '"content-editor"')
     && !str_contains($files['editor'], '/static/js/add/media-selector.js')
-    && str_contains($files['editor'], "toolbar.addHandler('image'")
-    && str_contains($files['editor'], "[{ color: [] }, { background: [] }]")
-    && str_contains($files['editor'], "['link', 'image', 'video']")
-    && str_contains($files['editor'], "toolbar.addHandler('video'")
+    && str_contains($files['editor'], 'content_editor_render_mount')
+    && str_contains($files['editor'], "window.JyavaniEditor.mount('#ct-content-editor'")
+    && str_contains($files['editor'], 'request.defaults.pickMedia(request)')
     && str_contains($files['editor'], '/admin/modal_file/index.php?embedded=1&tab=library')
-    && str_contains($files['editor'], 'window.generateFileShortcode'),
-    'translation editor opens the selectable Core file library from its full Quill toolbar');
-$check(str_contains($files['editor'], 'id="ct-quill-area"')
-    && str_contains($files['editor'], 'id="ct-codemirror-area"')
-    && str_contains($files['editor'], 'name="editor_mode"')
-    && str_contains($files['editor'], 'function setEditorMode(mode)')
-    && str_contains($files['editor'], 'complexPattern.test(html)'),
-    'translation editor offers synchronized Quill and CodeMirror modes without passing complex HTML through Quill');
+    && str_contains($files['editor'], 'editor.snapshot()')
+    && str_contains($files['editor'], 'editor.markSaved(submitted)'),
+    'translation editor delegates its scoped toolbar, media, files, and save snapshots to Core');
+$check(!str_contains($files['editor'], 'new Quill(')
+    && !str_contains($files['editor'], 'CodeMirror.fromTextArea')
+    && !str_contains($files['editor'], 'complexPattern')
+    && !str_contains($files['helpers'], 'ct_content_requires_codemirror'),
+    'translation editor no longer duplicates Core engine or complex-HTML policy');
 $check(str_contains($files['media'], 'information_schema.tables')
     && !str_contains($files['media'], "require dirname(__DIR__) . '/migrations/0004-localized-media.php'"),
     'normal localized-media requests probe schema without executing migration DDL');
@@ -217,7 +215,8 @@ $check(str_contains($files['plugin'], 'ct_localized_media_state_exists')
     'plugin disable/delete preflight blocks media state, fails closed, and performs no DDL');
 $check(str_contains($files['docs'], 'independent of the site default language')
     && str_contains($files['docs'], 'No importer is provided')
-    && str_contains($files['docs'], 'generic Core media extension contract'),
+    && str_contains($files['docs'], 'Jyavani Core 2.3.140')
+    && str_contains($files['docs'], 'scoped Quill/CodeMirror mount API'),
     'documentation records source-language independence, export scope, and released Core requirement');
 $check(str_contains($files['media'], 'function ct_localized_media_supported')
     && str_contains($files['media'], 'if (ct_localized_media_supported())')
