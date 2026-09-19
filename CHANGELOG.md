@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.1 - 2026-09-19
+
+- Prevent refreshed localized-media optimistic tokens from recreating an unsaved-change warning after a successful metadata save.
+- Keep editable media metadata covered by the Core unsaved-change guard.
+
 ## 1.17.0 - 2026-09-18
 
 - Move post, page, and Theme Section translation editing onto the scoped Jyavani Core Quill/CodeMirror mount contract.

@@ -590,7 +590,7 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
     if ($contextLocale !== null) {
         $alias = $mediaId > 0 ? ct_media_alias($pdo, $mediaId, $contextLocale) : null;
         if ($profile === null) {
-            echo '<input type="hidden" name="media_extension[content-translation][profile_state]" value="' . ct_media_profile_state(null, []) . '">';
+            echo '<input type="hidden" name="media_extension[content-translation][profile_state]" value="' . ct_media_profile_state(null, []) . '" data-unsaved-guard-ignore>';
             echo '<input type="hidden" name="media_extension[content-translation][metadata_source_locale]" value="' . htmlspecialchars($contextLocale, ENT_QUOTES) . '">';
             echo '<input type="hidden" name="media_extension[content-translation][availability_policy]" value="all">';
         }
@@ -600,14 +600,14 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
             ? __('This pane is locked to the content language. One media file can serve every language; translate only its metadata here.')
             : __('Add the original metadata in this content language. One uploaded file can serve every language.'), ENT_QUOTES) . '</p>';
         echo '<input type="hidden" name="media_extension[content-translation][media_alias_locale]" value="' . htmlspecialchars($contextLocale, ENT_QUOTES) . '">';
-        echo '<input type="hidden" name="media_extension[content-translation][media_alias_state]" value="' . ct_media_alias_state($alias) . '">';
+        echo '<input type="hidden" name="media_extension[content-translation][media_alias_state]" value="' . ct_media_alias_state($alias) . '" data-unsaved-guard-ignore>';
         echo '<label>' . htmlspecialchars(__('Image URL slug'), ENT_QUOTES) . '<input type="text" name="media_extension[content-translation][media_alias_slug]" value="' . htmlspecialchars((string)($alias['slug'] ?? ''), ENT_QUOTES) . '" maxlength="191" pattern="[a-z0-9_-]*" placeholder="campus-library"></label>';
         echo '<p class="muted">' . htmlspecialchars(__('Optional. This creates a language-specific URL for the same media file; it does not upload or rename the image.'), ENT_QUOTES) . '</p>';
         if ($mediaId > 0) echo '<div class="ct-media-metadata-slot" id="ct-media-translation-' . $mediaId . '-slot"></div>';
         echo '</fieldset>';
         return;
     }
-    echo '<input type="hidden" name="media_extension[content-translation][profile_state]" value="' . ct_media_profile_state($profile, $selected) . '">';
+    echo '<input type="hidden" name="media_extension[content-translation][profile_state]" value="' . ct_media_profile_state($profile, $selected) . '" data-unsaved-guard-ignore>';
     echo '<div class="ct-media-profile-grid"><label>' . htmlspecialchars(__('Original metadata language'), ENT_QUOTES) . '<select id="' . $controlId . '-source-locale" name="media_extension[content-translation][metadata_source_locale]">';
     foreach ($editableProfileLocales as $locale) echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . ($sourceLocale === $locale ? ' selected' : '') . '>' . htmlspecialchars(ct_media_locale_label($locale), ENT_QUOTES) . '</option>';
     echo '</select></label>';

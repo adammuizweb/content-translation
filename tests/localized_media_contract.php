@@ -168,6 +168,10 @@ $check(str_contains($files['media'], "}, 100, 4);")
     && str_contains($files['media'], 'queueMicrotask(rebase)')
     && str_contains($files['media'], 'guard.register(form);guard.markSaved(null,null,form)'),
     'media translation initialization rebases the shared unsaved guard after all synchronous detail hooks');
+$check(preg_match_all('~name="media_extension\[content-translation\]\[profile_state\]"[^\n]*data-unsaved-guard-ignore~', $files['media']) === 2
+    && preg_match('~name="media_extension\[content-translation\]\[media_alias_state\]"[^\n]*data-unsaved-guard-ignore~', $files['media']) === 1
+    && preg_match('~name="media_extension\[content-translation\]\[media_alias_slug\]"[^\n]*data-unsaved-guard-ignore~', $files['media']) === 0,
+    'refreshed optimistic media tokens do not recreate a dirty form while editable metadata remains guarded');
 $check(str_contains($files['media'], '-source-locale" name="media_extension[content-translation][metadata_source_locale]')
     && str_contains($files['media'], 'sourceSelect.addEventListener("change"')
     && str_contains($files['media'], 'sourceLocale=sourceSelect.value;renderSource()')
