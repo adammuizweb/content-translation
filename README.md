@@ -8,7 +8,7 @@ search, sitemaps, and `hreflang` output.
 
 ## Requirements
 
-- Jyavani Core 2.3.140 or newer
+- Jyavani Core 2.3.148 or newer
 - PHP 8.1 or newer
 - PHP extensions: PDO and JSON
 

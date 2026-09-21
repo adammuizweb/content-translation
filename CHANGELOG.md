@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.18.0 - 2026-09-21
+
+- Add an AJAX language selector beside the column control on the Core Article, Page, and Theme Content lists.
+- Preserve the selected list language through filters, pagination, and translation-editor return navigation without changing the user's writing language.
+- Add permission-aware Add, Edit, and View translation actions to Core content rows.
+- Require Jyavani Core 2.3.148 for the shared content-list filter contract.
+
 ## 1.17.1 - 2026-09-19
 
 - Prevent refreshed localized-media optimistic tokens from recreating an unsaved-change warning after a successful metadata save.

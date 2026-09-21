@@ -368,41 +368,63 @@ add_action('admin_footer', function (): void {
     echo '<script>(function(){var form=document.getElementById(' . json_encode($formId) . ');if(!form)return;var notice=document.createElement("div");notice.className="ct-author-language-notice";notice.textContent=' . json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';form.prepend(notice)})()</script>';
 });
 
-// Show each dashboard user the published representation for their configured
-// writing locale while retaining Core's source row as the fallback.
+add_action('admin_content_list_filters', function ($context, $pdo): void {
+    if (!$pdo instanceof PDO || !is_array($context)
+        || !in_array((string)($context['type'] ?? ''), ['article', 'page', 'theme'], true)
+        || !ct_user_can_workspace($pdo)) return;
+    if (($context['type'] ?? '') === 'theme' && !ct_user_is_site_owner($pdo)) return;
+
+    $selected = ct_admin_content_list_locale($pdo, $context);
+    $presets = function_exists('content_locale_presets') ? content_locale_presets() : [];
+    $formId = is_string($context['filter_form_id'] ?? null)
+        && preg_match('/\A[a-z][a-z0-9_-]{0,63}\z/', $context['filter_form_id']) === 1
+        ? $context['filter_form_id']
+        : '';
+    echo '<label class="sr-only" for="ct-content-list-locale">' . htmlspecialchars(__('Language'), ENT_QUOTES, 'UTF-8') . '</label>';
+    echo '<select class="inp ct-content-list-locale" id="ct-content-list-locale" name="content_locale" data-ct-content-list-locale aria-label="' . htmlspecialchars(__('Language'), ENT_QUOTES, 'UTF-8') . '"'
+        . ($formId !== '' ? ' form="' . htmlspecialchars($formId, ENT_QUOTES, 'UTF-8') . '"' : '') . '>';
+    foreach (ct_content_locales($pdo) as $locale) {
+        $label = isset($presets[$locale]) ? __((string)$presets[$locale]) . ' (' . strtoupper($locale) . ')' : strtoupper($locale);
+        echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES, 'UTF-8') . '"' . ($locale === $selected ? ' selected' : '') . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+    }
+    echo '</select>';
+    echo '<script>(function(){var select=document.querySelector("[data-ct-content-list-locale]");if(!select||select.dataset.ctAjaxReady)return;select.dataset.ctAjaxReady="1";select.addEventListener("change",function(){var url=new URL(window.location.href);url.searchParams.set("content_locale",select.value);url.searchParams.delete("p");select.disabled=true;select.setAttribute("aria-busy","true");fetch(url.href,{method:"GET",credentials:"same-origin",cache:"no-store",redirect:"error",headers:{Accept:"text/html"}}).then(function(response){if(!response.ok||!(response.headers.get("content-type")||"").toLowerCase().includes("text/html"))throw new Error("invalid response");return response.text()}).then(function(html){window.history.pushState({contentLocale:select.value},"",url.href);document.open();document.write(html);document.close()}).catch(function(){window.location.assign(url.href)})})})()</script>';
+}, 10, 2);
+
+// Show the requested list representation while retaining Core's source row as
+// the fallback. The list language is independent from the writing preference.
 add_filter('post_list_join', function (string $join, $where = '', $context = []): string {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $join;
-    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $context = is_array($context) ? $context : [];
+    $locale = ct_admin_content_list_locale($pdo, $context);
     $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
     $localeSql = $pdo->quote($locale);
     $translationCondition = $locale === $default ? ' AND 1 = 0' : '';
-    $slugCondition = is_array($context) && ($context['type'] ?? '') === 'theme'
-        ? ''
-        : "\n        AND TRIM(ct_post_list_display.slug) <> ''";
 
     return $join . " LEFT JOIN ct_post_workflows ct_post_list_workflow
         ON ct_post_list_workflow.post_id = p.id
         LEFT JOIN post_translations ct_post_list_display
         ON ct_post_list_display.post_id = p.id
-        AND ct_post_list_display.locale = {$localeSql}
-        AND TRIM(ct_post_list_display.title) <> ''{$slugCondition}{$translationCondition}";
+        AND ct_post_list_display.locale = {$localeSql}{$translationCondition}";
 }, 10, 3);
 
 add_filter('post_list_select', function (string $select, $where = '', $context = []): string {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $select;
-    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $context = is_array($context) ? $context : [];
+    $locale = ct_admin_content_list_locale($pdo, $context);
     $localeSql = $pdo->quote($locale);
 
     return $select . ",
-        CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.title ELSE p.title END AS title,
-        CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE p.slug END AS slug,
+        CASE WHEN TRIM(COALESCE(ct_post_list_display.title, '')) <> '' THEN ct_post_list_display.title ELSE p.title END AS title,
+        CASE WHEN TRIM(COALESCE(ct_post_list_display.slug, '')) <> '' THEN ct_post_list_display.slug ELSE p.slug END AS slug,
         CASE
             WHEN {$localeSql} = ct_post_list_workflow.source_locale THEN ct_post_list_workflow.source_status
             WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.status
             ELSE p.status
         END AS status,
+        ct_post_list_display.id AS ct_translation_id,
         CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN {$localeSql} ELSE NULL END AS ct_locale,
         CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE NULL END AS ct_translated_slug";
 }, 10, 3);
@@ -489,13 +511,48 @@ add_action('site_settings_after_collection_paths', function ($pdo, $input = []) 
 add_filter('post_list_status_expression', function ($expression, $context = []) {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $expression;
-    $localeSql = $pdo->quote(ct_author_default_locale($pdo, ct_current_user_id()));
+    $context = is_array($context) ? $context : [];
+    $localeSql = $pdo->quote(ct_admin_content_list_locale($pdo, $context));
     return "CASE
         WHEN {$localeSql} = ct_post_list_workflow.source_locale THEN ct_post_list_workflow.source_status
         WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.status
         ELSE p.status
     END";
 }, 10, 2);
+
+add_filter('admin_content_row_actions', function ($items, $row, $context, $pdo) {
+    if (!is_array($items) || !is_array($row) || !is_array($context) || !$pdo instanceof PDO) return $items;
+    $type = (string)($context['content_type'] ?? '');
+    if (!in_array($type, ['article', 'page', 'theme'], true)) return $items;
+
+    $listContext = ['type' => $type];
+    $locale = ct_admin_content_list_locale($pdo, $listContext, (int)($context['actor_id'] ?? 0));
+    $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+    if ($locale === $default) return $items;
+
+    $post = $row;
+    $post['type'] = $type;
+    $post['created_by'] = (int)($row['owner_id'] ?? $row['created_by'] ?? 0);
+    $actorId = (int)($context['actor_id'] ?? 0);
+    if (!ct_user_can_view_post_representation($pdo, $post, $actorId)) return $items;
+
+    $exists = (int)($row['ct_translation_id'] ?? 0) > 0;
+    $canEdit = ct_user_can_edit_post_locale($pdo, $post, $locale, $actorId);
+    $label = __($canEdit ? ($exists ? 'Edit' : 'Add') : 'View') . ' ' . strtoupper($locale);
+    $query = [
+        'page' => 'admin/tools/content-translation/edit',
+        'post_id' => (int)($row['id'] ?? 0),
+        'locale' => $locale,
+    ];
+    if (is_string($context['return_to'] ?? null) && $context['return_to'] !== '') $query['return_to'] = $context['return_to'];
+    $items[] = [
+        'key' => 'content-translation.' . strtolower($locale),
+        'label' => $label,
+        'url' => rtrim((string)ADMIN_BASE_PATH, '/') . '/?' . http_build_query($query),
+        'title' => $label,
+    ];
+    return $items;
+}, 10, 4);
 
 add_filter('post_list_search_condition', function ($condition, $context = []) {
     $pdo = $GLOBALS['pdo'] ?? null;

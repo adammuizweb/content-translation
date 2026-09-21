@@ -62,7 +62,7 @@ $pdo->exec("INSERT INTO category_translations VALUES (1, 'id', 'Berita', 'publis
 $pdo->exec("INSERT INTO category_translations VALUES (2, 'id', 'Draf Tersembunyi', 'draft')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.17.1', 'plugin release is 1.17.1');
+$check(($manifest['version'] ?? '') === '1.18.0', 'plugin release is 1.18.0');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -100,13 +100,17 @@ $check(str_contains($admin, "add_action('admin_post_after_add'")
 $check(str_contains($admin, "add_filter('site_settings_validation_errors'")
     && str_contains($admin, 'Content default language cannot change'), 'active workflows lock the canonical content language');
 $check(str_contains($admin, "add_filter('post_list_join'")
+    && str_contains($admin, "add_action('admin_content_list_filters'")
+    && str_contains($admin, "add_filter('admin_content_row_actions'")
+    && str_contains($admin, 'content_locale')
+    && str_contains($helpers, 'ct_admin_content_list_locale')
     && str_contains($admin, 'ct_post_list_workflow.source_status')
     && str_contains($admin, 'ct_post_list_display.status')
     && str_contains($admin, "add_filter('post_list_status_expression'")
     && str_contains($admin, "add_filter('post_list_search_condition'")
     && str_contains($admin, "add_filter('post_list_rows'")
     && str_contains($admin, "admin/themes/edit"),
-    'article, page, and Theme Template dashboards use the current writing locale');
+    'article, page, and Theme Template dashboards support an independent list language with translation actions');
 $check(str_contains($admin, "add_filter('admin_category_list_rows'")
     && str_contains($admin, "add_action('admin_category_row_actions'")
     && str_contains($admin, "add_action('admin_category_before_purge_commit'")
@@ -143,6 +147,10 @@ $check(str_contains($plugin, "['disable', 'delete']")
 $check(ct_author_default_locale($pdo, 7) === 'id'
     && ct_author_default_locale($pdo, 8) === 'en'
     && ct_author_default_locale($pdo, 9) === 'en', 'stored preferences allow only enabled non-default locales');
+$check(ct_admin_content_list_locale($pdo, ['type' => 'article'], 7, ['content_locale' => 'de']) === 'de'
+    && ct_admin_content_list_locale($pdo, ['type' => 'article'], 7, ['content_locale' => ['id']]) === 'id'
+    && ct_admin_content_list_locale($pdo, ['type' => 'article'], 7, ['content_locale' => 'fr']) === 'id',
+    'explicit valid list language overrides writing preference without accepting malformed or disabled locales');
 $check(ct_set_author_locale_preferences($pdo, [7 => 'de', 8 => 'en', 9 => 'fr'])
     && json_decode((string)$authorLanguageSettings['content_translation_author_locales'], true) === ['7' => 'de'], 'preference writes discard default and unavailable locales');
 $check(ct_post_authoring_locale($pdo, $post) === 'id'
@@ -159,6 +167,34 @@ $_SESSION['user_id'] = 7;
 $GLOBALS['pdo'] = $pdo;
 $_GET = ['page' => 'admin/posts/add'];
 require $root . '/includes/admin.php';
+$listFilter = $GLOBALS['authorLanguageActions']['admin_content_list_filters'][10][0] ?? null;
+$_GET = ['page' => 'admin/posts/index', 'content_locale' => 'de'];
+ob_start();
+if (is_callable($listFilter)) $listFilter(['schema' => 1, 'type' => 'article', 'filter_form_id' => 'posts-list-filter'], $pdo);
+$listFilterOutput = (string)ob_get_clean();
+$check(str_contains($listFilterOutput, 'name="content_locale"')
+    && str_contains($listFilterOutput, 'value="de" selected')
+    && str_contains($listFilterOutput, 'form="')
+    && str_contains($listFilterOutput, 'fetch(url.href')
+    && str_contains($listFilterOutput, 'document.write(html)')
+    && str_contains($listFilterOutput, 'searchParams.delete("p")'),
+    'content lists render an AJAX language control without changing writing preference');
+if (!defined('ADMIN_BASE_PATH')) define('ADMIN_BASE_PATH', '/dashboard');
+$rowActionFilter = $GLOBALS['authorLanguageFilters']['admin_content_row_actions'][10][0] ?? null;
+$rowActions = is_callable($rowActionFilter) ? $rowActionFilter([], [
+    'id' => 22,
+    'owner_id' => 7,
+    'ct_translation_id' => 0,
+], [
+    'content_type' => 'article',
+    'actor_id' => 7,
+    'return_to' => '/dashboard/?page=admin/posts/index&content_locale=de',
+], $pdo) : [];
+$check(($rowActions[0]['label'] ?? '') === 'Add DE'
+    && str_contains((string)($rowActions[0]['url'] ?? ''), 'locale=de')
+    && str_contains((string)($rowActions[0]['url'] ?? ''), 'return_to='),
+    'alternate-language list rows expose an authorized translation action with preserved return state');
+$_GET = ['page' => 'admin/posts/add'];
 $footer = $GLOBALS['authorLanguageActions']['admin_footer'][10][0] ?? null;
 ob_start();
 if (is_callable($footer)) {

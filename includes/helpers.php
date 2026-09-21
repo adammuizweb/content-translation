@@ -469,6 +469,18 @@ if (!function_exists('ct_ensure_schema')) {
         return is_string($preferred) && ct_user_has_locale_edit_grant($pdo, $userId, $preferred) ? $preferred : $default;
     }
 
+    function ct_admin_content_list_locale(PDO $pdo, array $context = [], ?int $userId = null, ?array $input = null): string {
+        $userId ??= ct_current_user_id();
+        $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        if ($userId <= 0 || !ct_user_can_workspace($pdo, $userId)) return $default;
+        if (($context['type'] ?? '') === 'theme' && !ct_user_is_site_owner($pdo, $userId)) return $default;
+
+        $input ??= $_GET;
+        $candidate = $input['content_locale'] ?? null;
+        if (is_string($candidate) && in_array($candidate, ct_content_locales($pdo), true)) return $candidate;
+        return ct_author_default_locale($pdo, $userId);
+    }
+
     function ct_set_author_locale_preferences(PDO $pdo, array $preferences): bool {
         $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
         $enabled = ct_enabled_locales($pdo);
