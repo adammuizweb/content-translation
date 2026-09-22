@@ -49,20 +49,29 @@ $pdo = new PDO('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, type TEXT, title TEXT, slug TEXT, content TEXT, meta TEXT, status TEXT, created_by INTEGER, is_deleted INTEGER)');
 $pdo->exec('CREATE TABLE ct_post_workflows (post_id INTEGER PRIMARY KEY, source_locale TEXT, author_locale TEXT, source_status TEXT)');
-$pdo->exec('CREATE TABLE post_translations (post_id INTEGER, locale TEXT, title TEXT, slug TEXT, content TEXT, meta_description TEXT, status TEXT)');
+$pdo->exec('CREATE TABLE post_translations (id INTEGER PRIMARY KEY, post_id INTEGER, locale TEXT, title TEXT, slug TEXT, content TEXT, meta_description TEXT, status TEXT)');
+$pdo->exec('CREATE TABLE jvb_layouts (post_id INTEGER PRIMARY KEY, status TEXT, published_at TEXT, draft_json TEXT)');
 $pdo->exec('CREATE TABLE ct_user_locale_edit_grants (user_id INTEGER, locale TEXT, PRIMARY KEY (user_id, locale))');
 $pdo->exec('CREATE TABLE ct_role_locale_edit_grants (role_id INTEGER, locale TEXT, PRIMARY KEY (role_id, locale))');
 $pdo->exec('CREATE TABLE user_roles (user_id INTEGER, role_id INTEGER, expires_at TEXT)');
 $pdo->exec("INSERT INTO ct_user_locale_edit_grants VALUES (7, 'id'), (7, 'de')");
-$pdo->exec('CREATE TABLE category_translations (category_id INTEGER, locale TEXT, name TEXT, status TEXT)');
+$pdo->exec('CREATE TABLE categories (id INTEGER PRIMARY KEY, parent_id INTEGER, slug TEXT, is_deleted INTEGER)');
+$pdo->exec('CREATE TABLE category_translations (category_id INTEGER, locale TEXT, name TEXT, slug TEXT, description TEXT, status TEXT)');
 $pdo->exec("INSERT INTO posts VALUES (22, 'article', '[EN translation pending]', 'ct-pending-en-22', '', NULL, 'published', 7, 0)");
 $pdo->exec("INSERT INTO ct_post_workflows VALUES (22, 'en', 'id', 'draft')");
-$pdo->exec("INSERT INTO post_translations VALUES (22, 'id', 'Artikel ID', 'artikel-id', 'Isi', '', 'published')");
-$pdo->exec("INSERT INTO category_translations VALUES (1, 'id', 'Berita', 'published')");
-$pdo->exec("INSERT INTO category_translations VALUES (2, 'id', 'Draf Tersembunyi', 'draft')");
+$pdo->exec("INSERT INTO post_translations VALUES (1, 22, 'id', 'Artikel ID', 'artikel-id', 'Isi', '', 'published')");
+$pdo->exec("INSERT INTO post_translations VALUES (2, 22, 'de', 'Deutscher Artikel', 'deutscher-artikel', 'Inhalt', '', 'published')");
+$pdo->exec("INSERT INTO jvb_layouts VALUES (22, 'published', '2026-09-22 00:00:00', NULL)");
+$pdo->exec("INSERT INTO categories VALUES (1, NULL, 'news', 0), (2, NULL, 'draft', 0), (3, NULL, 'parent', 0), (4, 3, 'child', 0)");
+$pdo->exec("INSERT INTO category_translations VALUES
+    (1, 'id', 'Berita', 'berita', '', 'published'),
+    (1, 'de', 'Nachrichten', 'nachrichten', 'Deutsche Nachrichten', 'published'),
+    (2, 'id', 'Draf Tersembunyi', 'draf', '', 'draft'),
+    (2, 'de', 'Entwurf', 'entwurf', '', 'draft'),
+    (4, 'de', 'Kind', 'kind', '', 'published')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.18.0', 'plugin release is 1.18.0');
+$check(($manifest['version'] ?? '') === '1.19.0', 'plugin release is 1.19.0');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -115,8 +124,9 @@ $check(str_contains($admin, "add_filter('admin_category_list_rows'")
     && str_contains($admin, "add_action('admin_category_row_actions'")
     && str_contains($admin, "add_action('admin_category_before_purge_commit'")
     && str_contains($admin, 'ct_get_published_category_translation')
+    && str_contains($admin, 'ct_admin_content_list_locale')
     && str_contains($admin, 'ct_category_url'),
-    'Content Translation adapts optional category labels, actions, URLs, and cleanup through Core hooks');
+    'Content Translation adapts selected-locale category labels, actions, URLs, and cleanup through Core hooks');
 $check(str_contains($helpers, 'ct_category_translation_slug_conflict')
     && str_contains($helpers, 'ct_assert_category_translation_paths_unique')
     && str_contains((string)file_get_contents($root . '/admin/category-edit.php'), 'authorization_lock_actor_permissions')
@@ -151,6 +161,17 @@ $check(ct_admin_content_list_locale($pdo, ['type' => 'article'], 7, ['content_lo
     && ct_admin_content_list_locale($pdo, ['type' => 'article'], 7, ['content_locale' => ['id']]) === 'id'
     && ct_admin_content_list_locale($pdo, ['type' => 'article'], 7, ['content_locale' => 'fr']) === 'id',
     'explicit valid list language overrides writing preference without accepting malformed or disabled locales');
+$check(ct_admin_content_list_types(['type' => 'category']) === ['category']
+    && ct_admin_content_list_types(['type' => 'mixed', 'content_types' => ['page', 'article', 'theme']]) === ['page', 'article', 'theme']
+    && ct_admin_content_list_types(['type' => 'mixed', 'content_types' => ['page', 'page']]) === []
+    && ct_admin_content_list_types(['type' => 'mixed', 'content_types' => ['page', 'unsupported']]) === []
+    && ct_admin_post_list_context(['type' => 'category']) === false
+    && ct_admin_post_list_context(['type' => 'mixed', 'content_types' => ['page', 'article', 'theme']]),
+    'content-list contexts accept Category and validated mixed Core post types while rejecting malformed capabilities');
+$check(ct_admin_content_list_locale($pdo, [
+    'type' => 'mixed',
+    'content_types' => ['page', 'article', 'theme'],
+], 7, ['content_locale' => 'de']) === 'de', 'mixed compatible lists honor an explicit locale');
 $check(ct_set_author_locale_preferences($pdo, [7 => 'de', 8 => 'en', 9 => 'fr'])
     && json_decode((string)$authorLanguageSettings['content_translation_author_locales'], true) === ['7' => 'de'], 'preference writes discard default and unavailable locales');
 $check(ct_post_authoring_locale($pdo, $post) === 'id'
@@ -167,6 +188,50 @@ $_SESSION['user_id'] = 7;
 $GLOBALS['pdo'] = $pdo;
 $_GET = ['page' => 'admin/posts/add'];
 require $root . '/includes/admin.php';
+$_GET = ['page' => 'admin/tools/compatible-builder', 'content_locale' => 'de'];
+$mixedListContext = [
+    'schema' => 1,
+    'surface' => 'plugin.compatible-builder',
+    'type' => 'mixed',
+    'content_types' => ['page', 'article', 'theme'],
+    'actor_id' => 7,
+];
+$joinFilter = $GLOBALS['authorLanguageFilters']['post_list_join'][10][0] ?? null;
+$selectFilter = $GLOBALS['authorLanguageFilters']['post_list_select'][10][0] ?? null;
+$statusFilter = $GLOBALS['authorLanguageFilters']['post_list_status_expression'][10][0] ?? null;
+$searchFilter = $GLOBALS['authorLanguageFilters']['post_list_search_condition'][10][0] ?? null;
+$mixedJoin = is_callable($joinFilter) ? $joinFilter('', '', $mixedListContext) : '';
+$mixedSelect = is_callable($selectFilter) ? $selectFilter('', '', $mixedListContext) : '';
+$mixedStatus = is_callable($statusFilter) ? $statusFilter('p.status', $mixedListContext) : '';
+$mixedSearch = is_callable($searchFilter) ? $searchFilter('(p.title LIKE :search)', $mixedListContext) : '';
+$check(str_contains($mixedJoin, 'ct_post_list_display')
+    && str_contains($mixedSelect, 'ct_translation_id')
+    && str_contains($mixedStatus, 'ct_post_list_workflow.source_status')
+    && str_contains($mixedSearch, 'ct_post_list_display.title'),
+    'compatible mixed-content lists receive localized joins, projections, status, and search expressions');
+$mixedSql = "SELECT p.id, p.title, p.slug, p.type, p.status, p.created_by,
+        l.status AS jvb_status{$mixedSelect}
+    FROM posts p
+    LEFT JOIN jvb_layouts l ON l.post_id = p.id
+    {$mixedJoin}
+    WHERE p.is_deleted = 0
+      AND ({$mixedStatus}) != 'private'
+      AND ({$mixedSearch})";
+$mixedStatement = $pdo->prepare($mixedSql);
+$mixedStatement->execute([':search' => '%Deutscher%']);
+$mixedRow = $mixedStatement->fetch(PDO::FETCH_ASSOC);
+$check(is_array($mixedRow)
+    && ($mixedRow['title'] ?? '') === 'Deutscher Artikel'
+    && ($mixedRow['slug'] ?? '') === 'deutscher-artikel'
+    && ($mixedRow['status'] ?? '') === 'published'
+    && ($mixedRow['jvb_status'] ?? '') === 'published',
+    'mixed-list SQL composes localized representation and search with one provider-owned layout join');
+$categoryContext = ['schema' => 1, 'type' => 'category', 'actor_id' => 7];
+$check((is_callable($joinFilter) ? $joinFilter('base join', '', $categoryContext) : '') === 'base join'
+    && (is_callable($selectFilter) ? $selectFilter('base select', '', $categoryContext) : '') === 'base select'
+    && (is_callable($statusFilter) ? $statusFilter('p.status', $categoryContext) : '') === 'p.status'
+    && (is_callable($searchFilter) ? $searchFilter('base search', $categoryContext) : '') === 'base search',
+    'Category contexts do not receive post-list SQL fragments');
 $listFilter = $GLOBALS['authorLanguageActions']['admin_content_list_filters'][10][0] ?? null;
 $_GET = ['page' => 'admin/posts/index', 'content_locale' => 'de'];
 ob_start();
@@ -179,6 +244,64 @@ $check(str_contains($listFilterOutput, 'name="content_locale"')
     && str_contains($listFilterOutput, 'document.write(html)')
     && str_contains($listFilterOutput, 'searchParams.delete("p")'),
     'content lists render an AJAX language control without changing writing preference');
+$_GET = ['page' => 'admin/categories/index', 'content_locale' => 'de'];
+ob_start();
+if (is_callable($listFilter)) $listFilter([
+    'schema' => 1,
+    'type' => 'category',
+    'filter_form_id' => 'categories-list-filter',
+], $pdo);
+$categoryFilterOutput = (string)ob_get_clean();
+$check(str_contains($categoryFilterOutput, 'value="de" selected')
+    && str_contains($categoryFilterOutput, 'form="categories-list-filter"'),
+    'Category list renders the selected locale control in its Core filter form');
+ob_start();
+if (is_callable($listFilter)) $listFilter([
+    'schema' => 1,
+    'type' => 'mixed',
+    'content_types' => ['page', 'article', 'theme'],
+    'filter_form_id' => 'jvb-list-filter',
+], $pdo);
+$mixedFilterOutput = (string)ob_get_clean();
+$check(str_contains($mixedFilterOutput, 'value="de" selected')
+    && str_contains($mixedFilterOutput, 'form="jvb-list-filter"'),
+    'compatible mixed-content plugin lists render the shared locale control');
+ob_start();
+if (is_callable($listFilter)) $listFilter([
+    'schema' => 1,
+    'type' => 'mixed',
+    'content_types' => ['page', 'unsupported'],
+    'filter_form_id' => 'invalid-list-filter',
+], $pdo);
+$check(ob_get_clean() === '', 'unsupported mixed-list capabilities fail closed without rendering controls');
+
+$categoryRowsFilter = $GLOBALS['authorLanguageFilters']['admin_category_list_rows'][10][0] ?? null;
+$categoryRows = [
+    ['id' => 1, 'name' => 'News', 'slug' => 'news', 'description' => '', 'parent_id' => null],
+    ['id' => 2, 'name' => 'Draft', 'slug' => 'draft', 'description' => '', 'parent_id' => null],
+    ['id' => 4, 'name' => 'Child', 'slug' => 'child', 'description' => '', 'parent_id' => 3],
+];
+$localizedCategories = is_callable($categoryRowsFilter) ? $categoryRowsFilter($categoryRows, [
+    'schema' => 1,
+    'type' => 'category',
+    'actor_id' => 7,
+], $pdo) : [];
+$check(($localizedCategories[0]['name'] ?? '') === 'Nachrichten'
+    && ($localizedCategories[0]['description'] ?? '') === 'Deutsche Nachrichten'
+    && ($localizedCategories[0]['display_url'] ?? '') === '/de/category/nachrichten/'
+    && ($localizedCategories[1]['name'] ?? '') === 'Draft'
+    && !isset($localizedCategories[1]['display_url'])
+    && ($localizedCategories[2]['name'] ?? '') === 'Kind'
+    && !isset($localizedCategories[2]['display_url']),
+    'Category rows use published selected-locale labels and only expose complete localized hierarchy URLs');
+$_GET = ['page' => 'admin/categories/index', 'content_locale' => 'en'];
+$canonicalCategories = is_callable($categoryRowsFilter) ? $categoryRowsFilter($categoryRows, [
+    'schema' => 1,
+    'type' => 'category',
+    'actor_id' => 7,
+], $pdo) : [];
+$check($canonicalCategories === $categoryRows, 'canonical Category locale retains the Core source representation');
+$_GET = ['page' => 'admin/posts/index', 'content_locale' => 'de'];
 if (!defined('ADMIN_BASE_PATH')) define('ADMIN_BASE_PATH', '/dashboard');
 $rowActionFilter = $GLOBALS['authorLanguageFilters']['admin_content_row_actions'][10][0] ?? null;
 $rowActions = is_callable($rowActionFilter) ? $rowActionFilter([], [

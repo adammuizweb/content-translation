@@ -255,7 +255,10 @@ add_action('admin_pages_bulk_before_mutation', function ($action, $posts, $pdo):
 
 add_filter('admin_category_list_rows', function ($categories, $context, $pdo) {
     if (!is_array($categories) || !$pdo instanceof PDO) return $categories;
-    $locale = ct_author_default_locale($pdo, ct_current_user_id());
+    $context = is_array($context) ? $context : [];
+    $actorId = (int)($context['actor_id'] ?? 0);
+    if ($actorId <= 0) $actorId = ct_current_user_id();
+    $locale = ct_admin_content_list_locale($pdo, $context, $actorId);
     $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
     if ($locale === $default) return $categories;
 
@@ -369,10 +372,9 @@ add_action('admin_footer', function (): void {
 });
 
 add_action('admin_content_list_filters', function ($context, $pdo): void {
-    if (!$pdo instanceof PDO || !is_array($context)
-        || !in_array((string)($context['type'] ?? ''), ['article', 'page', 'theme'], true)
+    if (!$pdo instanceof PDO || !is_array($context) || ct_admin_content_list_types($context) === []
         || !ct_user_can_workspace($pdo)) return;
-    if (($context['type'] ?? '') === 'theme' && !ct_user_is_site_owner($pdo)) return;
+    if (ct_admin_content_list_types($context) === ['theme'] && !ct_user_is_site_owner($pdo)) return;
 
     $selected = ct_admin_content_list_locale($pdo, $context);
     $presets = function_exists('content_locale_presets') ? content_locale_presets() : [];
@@ -397,6 +399,7 @@ add_filter('post_list_join', function (string $join, $where = '', $context = [])
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $join;
     $context = is_array($context) ? $context : [];
+    if (!ct_admin_post_list_context($context)) return $join;
     $locale = ct_admin_content_list_locale($pdo, $context);
     $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
     $localeSql = $pdo->quote($locale);
@@ -413,6 +416,7 @@ add_filter('post_list_select', function (string $select, $where = '', $context =
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $select;
     $context = is_array($context) ? $context : [];
+    if (!ct_admin_post_list_context($context)) return $select;
     $locale = ct_admin_content_list_locale($pdo, $context);
     $localeSql = $pdo->quote($locale);
 
@@ -430,12 +434,13 @@ add_filter('post_list_select', function (string $select, $where = '', $context =
 }, 10, 3);
 
 add_filter('post_list_rows', function ($rows, $context) {
-    if (!is_array($rows) || !is_array($context) || ($context['type'] ?? '') !== 'theme') return $rows;
+    if (!is_array($rows) || !is_array($context)
+        || !in_array('theme', ct_admin_content_list_types($context), true)) return $rows;
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $rows;
 
     foreach ($rows as &$row) {
-        if (!is_array($row)) continue;
+        if (!is_array($row) || (string)($row['type'] ?? 'theme') !== 'theme') continue;
         $locale = trim((string)($row['ct_locale'] ?? ''));
         $slug = trim((string)($row['ct_translated_slug'] ?? ''));
         if ($locale === '') continue;
@@ -512,6 +517,7 @@ add_filter('post_list_status_expression', function ($expression, $context = []) 
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $expression;
     $context = is_array($context) ? $context : [];
+    if (!ct_admin_post_list_context($context)) return $expression;
     $localeSql = $pdo->quote(ct_admin_content_list_locale($pdo, $context));
     return "CASE
         WHEN {$localeSql} = ct_post_list_workflow.source_locale THEN ct_post_list_workflow.source_status
@@ -557,6 +563,8 @@ add_filter('admin_content_row_actions', function ($items, $row, $context, $pdo) 
 add_filter('post_list_search_condition', function ($condition, $context = []) {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return $condition;
+    $context = is_array($context) ? $context : [];
+    if (!ct_admin_post_list_context($context)) return $condition;
     return '(CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.title ELSE p.title END LIKE :search
         OR CASE WHEN ct_post_list_display.post_id IS NOT NULL THEN ct_post_list_display.slug ELSE p.slug END LIKE :search)';
 }, 10, 2);

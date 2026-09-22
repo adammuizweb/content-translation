@@ -469,11 +469,31 @@ if (!function_exists('ct_ensure_schema')) {
         return is_string($preferred) && ct_user_has_locale_edit_grant($pdo, $userId, $preferred) ? $preferred : $default;
     }
 
+    function ct_admin_content_list_types(array $context): array {
+        $type = is_string($context['type'] ?? null) ? trim($context['type']) : '';
+        if (in_array($type, ['article', 'page', 'theme', 'category'], true)) return [$type];
+
+        $types = $context['content_types'] ?? null;
+        if (!is_array($types) || !array_is_list($types) || $types === [] || count($types) > 3) return [];
+        $normalized = [];
+        foreach ($types as $candidate) {
+            if (!is_string($candidate) || !in_array($candidate, ['article', 'page', 'theme'], true)
+                || in_array($candidate, $normalized, true)) return [];
+            $normalized[] = $candidate;
+        }
+        return $normalized;
+    }
+
+    function ct_admin_post_list_context(array $context): bool {
+        $types = ct_admin_content_list_types($context);
+        return $types !== [] && array_diff($types, ['article', 'page', 'theme']) === [];
+    }
+
     function ct_admin_content_list_locale(PDO $pdo, array $context = [], ?int $userId = null, ?array $input = null): string {
         $userId ??= ct_current_user_id();
         $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
         if ($userId <= 0 || !ct_user_can_workspace($pdo, $userId)) return $default;
-        if (($context['type'] ?? '') === 'theme' && !ct_user_is_site_owner($pdo, $userId)) return $default;
+        if (ct_admin_content_list_types($context) === ['theme'] && !ct_user_is_site_owner($pdo, $userId)) return $default;
 
         $input ??= $_GET;
         $candidate = $input['content_locale'] ?? null;

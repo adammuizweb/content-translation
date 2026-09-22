@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.19.0 - 2026-09-22
+
+- Add the list-language selector to the Core Category list and display published localized category labels and paths for the selected language.
+- Support compatible mixed Article, Page, and Theme Content lists through the generic `content_types` context, including Jy Builder's workspace list.
+- Keep optional integrations capability-based so Content Translation and compatible list providers remain independently installable.
+- Require Jyavani Core 2.3.149 for the Category list-filter contract.
+
 ## 1.18.0 - 2026-09-21
 
 - Add an AJAX language selector beside the column control on the Core Article, Page, and Theme Content lists.

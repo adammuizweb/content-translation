@@ -8,7 +8,7 @@ search, sitemaps, and `hreflang` output.
 
 ## Requirements
 
-- Jyavani Core 2.3.148 or newer
+- Jyavani Core 2.3.149 or newer
 - PHP 8.1 or newer
 - PHP extensions: PDO and JSON
 
@@ -25,6 +25,8 @@ search, sitemaps, and `hreflang` output.
   search results, collection pages, and selected-locale sitemaps.
 - Render a context-aware language switcher as pills or a select field.
 - Assign locale editing grants and default writing languages by user or role.
+- Switch the displayed language on Core content/category lists and compatible
+  mixed-content plugin lists without changing the user's writing language.
 - Manage reviewed media metadata, locale availability, aliases, and localized
   featured-media choices when the required Core media contract is available.
 - Export translation data as JSON before maintenance or removal.
