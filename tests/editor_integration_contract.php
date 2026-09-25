@@ -11,7 +11,7 @@ $check = static function (bool $condition, string $message) use (&$failures): vo
     if (!$condition) $failures[] = $message;
 };
 
-$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.149'
+$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.155'
     && ($manifest['dependencies']['js'] ?? null) === ['content-editor'],
     'manifest requires and loads the scoped Core editor contract');
 $check(!isset($manifest['requires']['plugins']['jyavani-ai'])

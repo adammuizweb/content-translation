@@ -324,7 +324,8 @@ function ct_media_mutation_payload(PDO $pdo, array $fields, array $context, arra
         if (preg_match('/\A[a-f0-9]{64}\z/D', $aliasState) !== 1 || !hash_equals(ct_media_alias_state($currentAlias), $aliasState)) {
             throw new RuntimeException('This media URL was changed by another editor. Reload before saving.');
         }
-        $slug = ct_media_alias_slug((string)($fields['media_alias_slug'] ?? ''));
+        $customAlias = !empty($fields['media_alias_custom']);
+        $slug = $customAlias ? ct_media_alias_slug((string)($fields['media_alias_slug'] ?? '')) : '';
         if (strlen($slug) > 191) throw new InvalidArgumentException('Media URL slug is too long.');
         $availableForAlias = $hasProfileInput
             ? ($policy === 'all' || in_array($aliasLocale, $selected, true))
@@ -589,6 +590,9 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
     echo '<fieldset class="ct-media-fields ct-media-localized-editor" id="' . $controlId . '"><legend>' . htmlspecialchars(__('Localized media'), ENT_QUOTES) . '</legend>';
     if ($contextLocale !== null) {
         $alias = $mediaId > 0 ? ct_media_alias($pdo, $mediaId, $contextLocale) : null;
+        $customAlias = trim((string)($alias['slug'] ?? '')) !== '';
+        $aliasToggleId = $controlId . '-alias-custom';
+        $aliasSlugId = $controlId . '-alias-slug';
         if ($profile === null) {
             echo '<input type="hidden" name="media_extension[content-translation][profile_state]" value="' . ct_media_profile_state(null, []) . '" data-unsaved-guard-ignore>';
             echo '<input type="hidden" name="media_extension[content-translation][metadata_source_locale]" value="' . htmlspecialchars($contextLocale, ENT_QUOTES) . '">';
@@ -601,8 +605,10 @@ function ct_render_media_profile_fields(array $context, PDO $pdo, ?array $row = 
             : __('Add the original metadata in this content language. One uploaded file can serve every language.'), ENT_QUOTES) . '</p>';
         echo '<input type="hidden" name="media_extension[content-translation][media_alias_locale]" value="' . htmlspecialchars($contextLocale, ENT_QUOTES) . '">';
         echo '<input type="hidden" name="media_extension[content-translation][media_alias_state]" value="' . ct_media_alias_state($alias) . '" data-unsaved-guard-ignore>';
-        echo '<label>' . htmlspecialchars(__('Image URL slug'), ENT_QUOTES) . '<input type="text" name="media_extension[content-translation][media_alias_slug]" value="' . htmlspecialchars((string)($alias['slug'] ?? ''), ENT_QUOTES) . '" maxlength="191" pattern="[a-z0-9_-]*" placeholder="campus-library"></label>';
-        echo '<p class="muted">' . htmlspecialchars(__('Optional. This creates a language-specific URL for the same media file; it does not upload or rename the image.'), ENT_QUOTES) . '</p>';
+        echo '<label class="ct-check" for="' . $aliasToggleId . '"><input id="' . $aliasToggleId . '" type="checkbox" name="media_extension[content-translation][media_alias_custom]" value="1"' . ($customAlias ? ' checked' : '') . '> ' . htmlspecialchars(__('Use custom image URL slug'), ENT_QUOTES) . '</label>';
+        echo '<label for="' . $aliasSlugId . '">' . htmlspecialchars(__('Image URL slug'), ENT_QUOTES) . '<input id="' . $aliasSlugId . '" type="text" name="media_extension[content-translation][media_alias_slug]" value="' . htmlspecialchars((string)($alias['slug'] ?? ''), ENT_QUOTES) . '" maxlength="191" pattern="[a-z0-9_\-]*" placeholder="campus-library"' . ($customAlias ? '' : ' disabled') . '></label>';
+        echo '<p class="muted">' . htmlspecialchars(__('Disabled uses the original image URL. Enabled creates a language-specific URL for the same media file.'), ENT_QUOTES) . '</p>';
+        echo '<script>(function(){var toggle=document.getElementById(' . json_encode($aliasToggleId) . '),slug=document.getElementById(' . json_encode($aliasSlugId) . ');if(!toggle||!slug)return;function sync(){slug.disabled=!toggle.checked;if(toggle.checked)slug.focus()}toggle.addEventListener("change",sync);sync()})()</script>';
         if ($mediaId > 0) echo '<div class="ct-media-metadata-slot" id="ct-media-translation-' . $mediaId . '-slot"></div>';
         echo '</fieldset>';
         return;
@@ -636,9 +642,9 @@ add_action('media_admin_upload_fields', function (array $context, PDO $pdo): voi
 add_action('media_admin_detail_before_fields', function (array $row, array $data, array $context, PDO $pdo): void { ct_render_media_profile_fields($context, $pdo, $row); }, 10, 4);
 add_action('media_admin_detail_after_fields', function (array $row, array $data, array $context, PDO $pdo): void {
     if (!ct_user_can_workspace($pdo)) return;
-    $profile = ct_media_profile($pdo, (int)$row['id']);
-    $sourceLocale = (string)($profile['metadata_source_locale'] ?? content_default_locale());
     $contextLocale = ct_media_translation_context($pdo, $context);
+    $profile = ct_media_profile($pdo, (int)$row['id']);
+    $sourceLocale = (string)($profile['metadata_source_locale'] ?? $contextLocale ?? content_default_locale());
     if ($contextLocale !== null) {
         if (!ct_user_has_locale_edit_grant($pdo, ct_current_user_id(), $contextLocale)) return;
         $translation = $contextLocale !== $sourceLocale ? (ct_media_translation($pdo, (int)$row['id'], $contextLocale) ?? []) : [];

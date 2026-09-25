@@ -71,7 +71,7 @@ $pdo->exec("INSERT INTO category_translations VALUES
     (4, 'de', 'Kind', 'kind', '', 'published')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.19.0', 'plugin release is 1.19.0');
+$check(($manifest['version'] ?? '') === '1.19.1', 'plugin release is 1.19.1');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -317,6 +317,15 @@ $check(($rowActions[0]['label'] ?? '') === 'Add DE'
     && str_contains((string)($rowActions[0]['url'] ?? ''), 'locale=de')
     && str_contains((string)($rowActions[0]['url'] ?? ''), 'return_to='),
     'alternate-language list rows expose an authorized translation action with preserved return state');
+$coreEditFilter = $GLOBALS['authorLanguageFilters']['admin_content_core_edit_action_visible'][10][0] ?? null;
+$check(is_callable($coreEditFilter)
+    && $coreEditFilter(true, ['id' => 22], ['content_type' => 'article', 'actor_id' => 7], $pdo) === false
+    && $coreEditFilter(true, ['id' => 1], ['content_type' => 'category', 'actor_id' => 7], $pdo) === false,
+    'alternate-language Article and Category lists hide the canonical source Edit action');
+$_GET = ['page' => 'admin/posts/index', 'content_locale' => 'en'];
+$check(is_callable($coreEditFilter)
+    && $coreEditFilter(true, ['id' => 22], ['content_type' => 'article', 'actor_id' => 7], $pdo) === true,
+    'default-language lists retain the canonical source Edit action');
 $_GET = ['page' => 'admin/posts/add'];
 $footer = $GLOBALS['authorLanguageActions']['admin_footer'][10][0] ?? null;
 ob_start();

@@ -71,10 +71,35 @@ $pdo->exec('CREATE TABLE ct_post_featured_media (post_id INTEGER, locale TEXT, r
 $pdo->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, is_deleted INTEGER)');
 $pdo->exec('CREATE TABLE post_translations (post_id INTEGER, locale TEXT, status TEXT)');
 $pdo->exec("INSERT INTO media VALUES (1, '/media/one.jpg', 'one.jpg', 'image/jpeg', 'jpg', 1, 10, 10, 'Asli', 'Alt asli', 'Caption asli', 'Credit asli', NULL, NULL, 'public', 'public', 'one.png', 'public', 1, 1, 0)");
+$pdo->exec("INSERT INTO media VALUES (3, '/media/two.jpg', 'two.jpg', 'image/jpeg', 'jpg', 1, 10, 10, 'Original', 'Original alt', '', '', NULL, NULL, 'public', 'public', 'two.png', 'public', 1, 1, 0)");
 $row = media_load_live($pdo, 1);
 $fingerprint = ct_media_source_fingerprint($row);
 $pdo->prepare("INSERT INTO ct_media_profiles VALUES (1, 'id', 'all', ?, 1, 1, NULL, NULL)")->execute([$fingerprint]);
 $pdo->prepare("INSERT INTO ct_media_translations VALUES (1, 'de', NULL, NULL, 'decorative', '', NULL, 'published', ?)")->execute([$fingerprint]);
+
+$newRow = media_load_live($pdo, 3);
+$newContext = ['surface' => 'admin.content.translation', 'consumer' => 'post', 'resource_id' => 92, 'field' => 'featured', 'content_locale' => 'de', 'selection_mode' => 'review'];
+ob_start();
+do_action('media_admin_detail_before_fields', $newRow, media_filter_data($pdo, $newRow, $newContext, true), $newContext, $pdo);
+do_action('media_admin_detail_after_fields', $newRow, media_filter_data($pdo, $newRow, $newContext, true), $newContext, $pdo);
+$newMediaHtml = (string)ob_get_clean();
+$check(str_contains($newMediaHtml, 'ct-media-translation-3-controls" hidden')
+    && str_contains($newMediaHtml, 'name="media_extension[content-translation][media_alias_custom]"')
+    && str_contains($newMediaHtml, 'name="media_extension[content-translation][media_alias_slug]"')
+    && str_contains($newMediaHtml, 'placeholder="campus-library" disabled'),
+    'first contextual media edit keeps the source pane authoritative and custom URL slug disabled');
+$newFields = [
+    'profile_state' => ct_media_profile_state(null, []),
+    'metadata_source_locale' => 'de',
+    'availability_policy' => 'all',
+    'media_alias_locale' => 'de',
+    'media_alias_state' => ct_media_alias_state(null),
+];
+$newMetadata = media_mutation_metadata($pdo, 'update', $newRow, ['media_extension' => ['content-translation' => $newFields]], $newContext);
+$check(($newMetadata['content_translation']['profile']['metadata_source_locale'] ?? null) === 'de'
+    && !isset($newMetadata['content_translation']['translation'])
+    && ($newMetadata['content_translation']['alias']['operation'] ?? null) === 'delete',
+    'first contextual media save never submits its source locale as an alternate translation');
 
 $check(ct_localized_media_state_exists($pdo), 'plugin state preflight detects localized media without running schema DDL');
 $check(ct_media_is_available($pdo, 1, 'de'), 'all-locale profile is available');
@@ -180,7 +205,7 @@ $check(preg_match('/^[a-f0-9]{64}$/', (string)($tokens['profile_state'] ?? '')) 
     'mutation response returns refreshed profile and active translation tokens alongside refreshed media');
 
 $aliasFields = [
-    'media_alias_locale' => 'id', 'media_alias_slug' => 'perpustakaan-kampus',
+    'media_alias_locale' => 'id', 'media_alias_custom' => '1', 'media_alias_slug' => 'perpustakaan-kampus',
     'media_alias_state' => ct_media_alias_state(null),
 ];
 $pdo->beginTransaction();

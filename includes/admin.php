@@ -393,6 +393,15 @@ add_action('admin_content_list_filters', function ($context, $pdo): void {
     echo '<script>(function(){var select=document.querySelector("[data-ct-content-list-locale]");if(!select||select.dataset.ctAjaxReady)return;select.dataset.ctAjaxReady="1";select.addEventListener("change",function(){var url=new URL(window.location.href);url.searchParams.set("content_locale",select.value);url.searchParams.delete("p");select.disabled=true;select.setAttribute("aria-busy","true");fetch(url.href,{method:"GET",credentials:"same-origin",cache:"no-store",redirect:"error",headers:{Accept:"text/html"}}).then(function(response){if(!response.ok||!(response.headers.get("content-type")||"").toLowerCase().includes("text/html"))throw new Error("invalid response");return response.text()}).then(function(html){window.history.pushState({contentLocale:select.value},"",url.href);document.open();document.write(html);document.close()}).catch(function(){window.location.assign(url.href)})})})()</script>';
 }, 10, 2);
 
+add_filter('admin_content_core_edit_action_visible', function ($visible, $row, $context, $pdo) {
+    if ($visible !== true || !is_array($context) || !$pdo instanceof PDO) return $visible;
+    $type = (string)($context['content_type'] ?? '');
+    if (!in_array($type, ['article', 'page', 'theme', 'category'], true)) return $visible;
+    $locale = ct_admin_content_list_locale($pdo, ['type' => $type], (int)($context['actor_id'] ?? 0));
+    $default = function_exists('content_default_locale') ? content_default_locale() : 'en';
+    return $locale === $default;
+}, 10, 4);
+
 // Show the requested list representation while retaining Core's source row as
 // the fallback. The list language is independent from the writing preference.
 add_filter('post_list_join', function (string $join, $where = '', $context = []): string {

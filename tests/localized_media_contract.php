@@ -179,10 +179,19 @@ $check(str_contains($files['media'], '-source-locale" name="media_extension[cont
     && str_contains($files['media'], 'data.set(field,String(sourceRow[field]||""))'),
     'changing the metadata source synchronizes the language pane without replacing original metadata with a translation draft');
 $check(str_contains($files['media'], 'ct_media_translation_context')
-    && str_contains($files['media'], "\$profile['metadata_source_locale'] ?? \$contextLocale ?? content_default_locale()")
+    && substr_count($files['media'], "\$profile['metadata_source_locale'] ?? \$contextLocale ?? content_default_locale()") === 2
     && str_contains($files['media'], "\$fields['metadata_source_locale'] = \$contextLocale")
     && str_contains($files['media'], "foreach (['metadata_source_locale', 'availability_policy', 'available_locales', 'profile_state'] as \$key) unset"),
-    'contextual uploads use the content locale while contextual updates cannot reclassify source or availability');
+    'contextual media rendering and mutation agree on the initial source locale while updates cannot reclassify source or availability');
+$check(str_contains($files['media'], 'pattern="[a-z0-9_\\-]*"')
+    && !str_contains($files['media'], 'pattern="[a-z0-9_-]*"'),
+    'media alias slug validation remains valid under browser RegExp v semantics');
+$check(str_contains($files['media'], 'media_alias_custom')
+    && str_contains($files['media'], 'Use custom image URL slug')
+    && str_contains($files['media'], 'slug.disabled=!toggle.checked')
+    && str_contains($files['media'], "\$customAlias ? ct_media_alias_slug")
+    && str_contains($files['media'], "'operation' => \$slug === '' ? 'delete' : 'save'"),
+    'media aliases require explicit custom-slug intent and fall back to the original image URL');
 $check(str_contains($files['media'], "\$metadata['core_fields']")
     && str_contains($files['media'], "(string)(\$row[\$field] ?? '')"),
     'contextual target mutations preserve source metadata through a server-authoritative Core override');

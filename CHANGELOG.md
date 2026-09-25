@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.19.1 - 2026-09-25
+
+- Require Jyavani Core 2.3.155 for canonical Edit-action visibility on alternate-language content lists.
+- Keep contextual media profile and translation controls aligned on the initial source locale so first-time metadata saves do not submit the same locale as both source and translation.
+- Keep the localized media alias pattern valid under browser RegExp `v` semantics.
+- Add an explicit custom-slug toggle for localized image URLs and retain the original URL when it is disabled.
+- Hide the canonical source Edit action when a Core content list is displaying an alternate language.
+
 ## 1.19.0 - 2026-09-22
 
 - Add the list-language selector to the Core Category list and display published localized category labels and paths for the selected language.
