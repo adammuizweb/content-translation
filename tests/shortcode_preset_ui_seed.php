@@ -130,10 +130,10 @@ require dirname(__DIR__) . '/includes/shortcode-presets.php';
 
 $catalog = ct_shortcode_preset_ui_translations();
 $pdo = new CtSeedPdo();
-$pdo->setOwned('Shortcodes', 'id', 'Old plugin value');
-$pdo->setUi('Shortcodes', 'id', 'Old plugin value');
-$pdo->setOwned('Shortcodes', 'de', 'Alter Pluginwert');
-$pdo->setUi('Shortcodes', 'de', 'User edit');
+$pdo->setOwned('Shortcode Builder', 'id', 'Old plugin value');
+$pdo->setUi('Shortcode Builder', 'id', 'Old plugin value');
+$pdo->setOwned('Shortcode Builder', 'de', 'Alter Pluginwert');
+$pdo->setUi('Shortcode Builder', 'de', 'User edit');
 $pdo->setUi('Manage Shortcode Presets', 'id', 'Pre-existing value');
 $pdo->setOwned('Obsolete unchanged', 'id', 'Plugin value');
 $pdo->setUi('Obsolete unchanged', 'id', 'Plugin value');
@@ -147,8 +147,8 @@ $check = static function (bool $condition, string $message) use (&$failures): vo
     echo ($condition ? 'PASS' : 'FAIL') . ' ' . $message . PHP_EOL;
     if (!$condition) $failures[] = $message;
 };
-$check($pdo->uiValue('Shortcodes', 'id') === $catalog['Shortcodes'][0], 'owned current UI value updates to the new seed');
-$check($pdo->uiValue('Shortcodes', 'de') === 'User edit', 'user-edited current UI value is preserved');
+$check($pdo->uiValue('Shortcode Builder', 'id') === $catalog['Shortcode Builder'][0], 'owned current UI value updates to the new seed');
+$check($pdo->uiValue('Shortcode Builder', 'de') === 'User edit', 'user-edited current UI value is preserved');
 $check($pdo->uiValue('Manage Shortcode Presets', 'id') === 'Pre-existing value' && !$pdo->owns('Manage Shortcode Presets', 'id'), 'pre-existing unowned UI row is preserved and remains unowned');
 $check($pdo->uiValue('Obsolete unchanged', 'id') === null && !$pdo->owns('Obsolete unchanged', 'id'), 'obsolete unchanged owned UI row and ownership are removed');
 $check($pdo->uiValue('Obsolete edited', 'de') === 'User value' && !$pdo->owns('Obsolete edited', 'de'), 'obsolete user-edited UI row is preserved while ownership is removed');

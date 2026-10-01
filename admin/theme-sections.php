@@ -93,7 +93,7 @@ if ($pageNum !== $requestedPage) {
           <td>
             <?php if ($resource === null): ?>
               <span class="ct-source-state ct-source-state--stale"><?= __('Unavailable') ?></span>
-              <small class="muted"><?= __('A referenced Theme Section is not currently registered.') ?></small>
+              <small class="muted"><?= __('Every renderer must be a physical file owned by the active theme. Fallback renderers from another theme, global renderers, and semantic Core fallbacks cannot be packaged.') ?></small>
             <?php else: ?>
               <span class="ct-section-order"><?= h(implode(' → ', $names)) ?></span>
             <?php endif; ?>

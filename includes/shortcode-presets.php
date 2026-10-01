@@ -384,6 +384,22 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
         return (is_scalar($value) || $value === null) && trim((string)$value) === '' ? 'hidden' : 'custom';
     }
 
+    function ct_shortcode_preset_layout_summary(PDO $pdo, array $config): array {
+        $layout = is_string($config['layout'] ?? null) ? trim($config['layout']) : '';
+        if ($layout === '' || !function_exists('post_cat__layout_template_descriptor')) {
+            return ['name' => $layout, 'available' => false, 'owner' => ''];
+        }
+        $descriptor = post_cat__layout_template_descriptor($pdo, $layout);
+        if (!is_array($descriptor)) return ['name' => $layout, 'available' => false, 'owner' => ''];
+        $source = (string)($descriptor['source'] ?? '');
+        $owner = $source === 'global' ? __('Global') : '';
+        if ($source === 'theme') {
+            $folder = is_string($descriptor['theme_folder'] ?? null) ? trim($descriptor['theme_folder']) : '';
+            $owner = $folder === '' ? __('Theme') : sprintf(__('Theme: %s'), $folder);
+        }
+        return ['name' => $layout, 'available' => $owner !== '', 'owner' => $owner];
+    }
+
     function ct_shortcode_preset_ui_translations(): array {
         return [
             'Localized collection paths' => ['Path koleksi lokal', 'Lokalisierte Sammlungspfade'],
@@ -419,11 +435,12 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'This page is a status overview. The primary workflow starts by opening the source preset and choosing a translation language there.' => ['Halaman ini adalah ringkasan status. Alur utama dimulai dengan membuka preset sumber dan memilih bahasa terjemahan di sana.', 'Diese Seite ist eine Statusübersicht. Der primäre Ablauf beginnt beim Quell-Preset, wo die Übersetzungssprache gewählt wird.'],
             'Translations belong to each Theme Template that uses this renderer. PHP remains the shared source for every language.' => ['Terjemahan dimiliki oleh setiap Theme Template yang memakai renderer ini. PHP tetap menjadi sumber bersama untuk semua bahasa.', 'Übersetzungen gehören zu jeder Theme-Vorlage, die diesen Renderer verwendet. PHP bleibt die gemeinsame Quelle für alle Sprachen.'],
             'Theme Template usage could not be loaded.' => ['Pemakaian Theme Template tidak dapat dimuat.', 'Die Verwendung in Theme-Vorlagen konnte nicht geladen werden.'],
+            'Translation packages require a physical renderer owned by the active theme. Fallback renderers from another theme, global renderers, and semantic Core fallbacks are unavailable.' => ['Paket terjemahan memerlukan renderer fisik milik tema aktif. Renderer fallback dari tema lain, renderer global, dan fallback semantik Core tidak tersedia.', 'Übersetzungspakete benötigen einen physischen Renderer des aktiven Themes. Fallback-Renderer eines anderen Themes, globale Renderer und semantische Core-Fallbacks sind nicht verfügbar.'],
             'This renderer is not used by a package-composed Theme Template, so it has no translation target yet.' => ['Renderer ini belum dipakai oleh Theme Template berbasis paket, sehingga belum memiliki target terjemahan.', 'Dieser Renderer wird noch von keiner paketbasierten Theme-Vorlage verwendet und hat daher noch kein Übersetzungsziel.'],
             'Used by Theme Template' => ['Dipakai oleh Theme Template', 'Verwendet von Theme-Vorlage'],
             'Unavailable' => ['Tidak tersedia', 'Nicht verfügbar'],
             'Opened from the source renderer. The matching section is highlighted below:' => ['Dibuka dari renderer sumber. Section yang sesuai disorot di bawah:', 'Vom Quell-Renderer geöffnet. Der passende Abschnitt ist unten hervorgehoben:'],
-            'Shortcodes' => ['Shortcode', 'Shortcodes'],
+            'Shortcode Builder' => ['Pembuat Shortcode', 'Shortcode-Builder'],
             'Translate Shortcode Presets' => ['Terjemahkan Preset Shortcode', 'Shortcode-Presets übersetzen'],
             'Edit Shortcode Preset Translation' => ['Edit Terjemahan Preset Shortcode', 'Shortcode-Preset-Übersetzung bearbeiten'],
             'Translate Shortcode Preset management titles and localized kicker text without changing query or layout configuration.' => ['Terjemahkan judul pengelolaan Preset Shortcode dan teks kicker lokal tanpa mengubah konfigurasi kueri atau tata letak.', 'Übersetzen Sie Verwaltungstitel und lokalisierte Kicker-Texte von Shortcode-Presets, ohne Abfrage oder Layout zu ändern.'],
@@ -438,6 +455,12 @@ if (!function_exists('ct_shortcode_preset_override_keys')) {
             'Management title' => ['Judul pengelolaan', 'Verwaltungstitel'],
             'Source heading' => ['Judul sumber', 'Quellüberschrift'],
             'Source status' => ['Status sumber', 'Quellstatus'],
+            'Collection Layout' => ['Tata Letak Koleksi', 'Sammlungs-Layout'],
+            'Collection Layout owner' => ['Pemilik Tata Letak Koleksi', 'Eigentümer des Sammlungs-Layouts'],
+            'Global' => ['Global', 'Global'],
+            'Theme' => ['Tema', 'Theme'],
+            'Theme: %s' => ['Tema: %s', 'Theme: %s'],
+            'The selected Collection Layout is unavailable.' => ['Tata Letak Koleksi yang dipilih tidak tersedia.', 'Das ausgewählte Sammlungs-Layout ist nicht verfügbar.'],
             'Locale translations' => ['Terjemahan bahasa', 'Sprachübersetzungen'],
             'Automatic' => ['Otomatis', 'Automatisch'],
             'Search preset title or slug…' => ['Cari judul atau slug preset…', 'Preset-Titel oder Slug suchen…'],
@@ -763,6 +786,7 @@ add_filter('shortcode_preset_runtime_config', function ($config, $preset, $pdo, 
     $overrides = $published[(int)($preset['id'] ?? 0)] ?? null;
     if (!is_array($overrides)) return $config;
     $kicker = trim((string)($overrides['kicker'] ?? ''));
+    // Core applies trusted request-local effective overrides after this locale overlay.
     if ($kicker !== '') $config['kicker'] = $kicker;
     return $config;
 }, 20, 4);

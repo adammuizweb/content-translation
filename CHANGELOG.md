@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.20.1 - 2026-10-01
+
+- Preserve freshly rendered Preset and widget output in dynamic Theme Sections while still applying translated semantic fields.
+- Restrict Theme Section translation packages to physical renderers owned by the active theme, including the default theme when it is active.
+- Clean sidebar translation state through Core's transactional resource lifecycle and add bounded orphan inspection and repair helpers.
+- Clarify Shortcode Preset heading precedence and expose Collection Layout ownership throughout the translation workflow.
+
 ## 1.20.0 - 2026-10-01
 
 - Add independent owner-labelled Theme Manager and PHP Source Editor actions for Theme Files and Theme UI Strings.

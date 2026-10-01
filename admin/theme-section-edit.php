@@ -107,6 +107,7 @@ $previewShell = function_exists('theme_section_preview_document_shell')
         ?>
         <article id="ct-package-section-<?= $index ?>" class="ct-package-section<?= $name === $focusSection ? ' ct-package-section--focused' : '' ?>" data-section-index="<?= $index ?>" data-section-name="<?= h($name) ?>">
           <header><span><?= sprintf(__('Section %d'), $index + 1) ?></span><strong><?= h($name) ?></strong><code><?= h(substr((string)$section['source_fingerprint'], 0, 12)) ?></code></header>
+          <?php if (!empty($section['dynamic'])): ?><div class="ct-flash ct-flash-warning"><?= __('This renderer contains live Preset or widget composition. Runtime keeps its freshly rendered HTML; translated semantic fields still apply. The stored HTML is used only as an editor snapshot and fallback reference.') ?></div><?php endif; ?>
           <input type="hidden" name="sections[<?= $index ?>][name]" value="<?= h($name) ?>">
           <div class="ct-package-columns">
             <section class="ct-package-side ct-package-source">

@@ -101,14 +101,15 @@ $sourceConfig = static function (array $preset) use ($pdo): array {
 
   <div class="ct-table-scroll">
     <table class="ct-table ct-preset-table">
-      <thead><tr><th><?= __('Preset') ?></th><th><?= __('Source heading') ?></th><th><?= __('Source status') ?></th><th><?= __('Locale translations') ?></th></tr></thead>
+      <thead><tr><th><?= __('Preset') ?></th><th><?= __('Source heading') ?></th><th><?= __('Collection Layout') ?></th><th><?= __('Source status') ?></th><th><?= __('Locale translations') ?></th></tr></thead>
       <tbody>
-        <?php if ($presets === []): ?><tr><td colspan="4" class="muted"><?= __('No Shortcode Presets found.') ?></td></tr><?php endif; ?>
+        <?php if ($presets === []): ?><tr><td colspan="5" class="muted"><?= __('No Shortcode Presets found.') ?></td></tr><?php endif; ?>
         <?php foreach ($presets as $preset): ?>
           <?php
             $config = $sourceConfig($preset);
             $sourceMode = ct_shortcode_preset_kicker_mode($config);
             $sourceKicker = $sourceMode === 'custom' && is_scalar($config['kicker'] ?? null) ? trim((string)$config['kicker']) : '';
+            $layoutSummary = ct_shortcode_preset_layout_summary($pdo, $config);
           ?>
           <tr>
             <td><a href="<?= h($sourceEditUrl . '&id=' . (int)$preset['id']) ?>"><strong><?= h((string)$preset['title']) ?></strong></a><br><code>[[widget:<?= h((string)$preset['slug']) ?>]]</code></td>
@@ -117,6 +118,7 @@ $sourceConfig = static function (array $preset) use ($pdo): array {
               <?php elseif ($sourceMode === 'hidden'): ?><span class="muted"><?= __('Hidden') ?></span>
               <?php else: ?><span class="muted"><?= __('Automatic') ?></span><?php endif; ?>
             </td>
+            <td><code><?= h((string)$layoutSummary['name']) ?></code><br><small class="muted"><?= $layoutSummary['available'] ? h((string)$layoutSummary['owner']) : __('Unavailable') ?></small></td>
             <td><span class="badge"><?= h(__(ucfirst((string)$preset['status']))) ?></span></td>
             <td>
               <div class="ct-preset-locales">

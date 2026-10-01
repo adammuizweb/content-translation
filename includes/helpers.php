@@ -1995,6 +1995,29 @@ if (!function_exists('ct_ensure_schema')) {
         return $stmt->execute([$itemId, $locale, (string)($data['title'] ?? ''), json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
     }
 
+    function ct_sidebar_item_translation_orphan_count(PDO $pdo): int {
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->query('SELECT COUNT(*) FROM sidebar_item_translations sit WHERE NOT EXISTS (SELECT 1 FROM sidebar_zone_items szi WHERE szi.id = sit.sidebar_item_id)');
+        if (!$stmt) throw new RuntimeException('Sidebar translation orphan count failed.');
+        return (int)$stmt->fetchColumn();
+    }
+
+    function ct_repair_sidebar_item_translation_orphans(PDO $pdo): int {
+        ct_ensure_schema($pdo);
+        $ownsTransaction = !$pdo->inTransaction();
+        if ($ownsTransaction) $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare('DELETE FROM sidebar_item_translations WHERE NOT EXISTS (SELECT 1 FROM sidebar_zone_items szi WHERE szi.id = sidebar_item_translations.sidebar_item_id)');
+            if (!$stmt->execute()) throw new RuntimeException('Sidebar translation orphan cleanup failed.');
+            $removed = $stmt->rowCount();
+            if ($ownsTransaction) $pdo->commit();
+            return $removed;
+        } catch (Throwable $error) {
+            if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+            throw $error;
+        }
+    }
+
     function ct_get_author_profile_translation(PDO $pdo, int $userId, string $locale): ?array {
         ct_ensure_schema($pdo);
         $stmt = $pdo->prepare('SELECT * FROM author_profile_translations WHERE user_id = ? AND locale = ? LIMIT 1');

@@ -78,7 +78,7 @@ $check(str_contains($css, '.ct-customize-guide')
     && str_contains($css, ':not(.ct-theme-strings-table)')
     && str_contains($themeStrings, 'ct-table-scroll'),
     'Customize workflow and responsive PHP string locale controls have complete styling');
-$check(str_contains((string)file_get_contents($root . '/plugin.json'), 'content-translation.css?v=1.20.0-theme-interface'),
+$check(str_contains((string)file_get_contents($root . '/plugin.json'), 'content-translation.css?v=1.20.1-theme-interface'),
     'changed theme interface stylesheet uses a cache-distinct asset URL');
 $themeBuilderReferences = [];
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));

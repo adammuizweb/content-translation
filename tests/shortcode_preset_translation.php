@@ -146,6 +146,8 @@ $pdo = new CtPresetTranslationPdo($row);
 $source = ['kicker' => 'Latest', 'layout' => 'grid', 'limit' => 7, 'plugin_extension' => ['kept' => true]];
 $localized = $runtime($source, ['id' => 9], $pdo, ['slot' => 'main.homepage']);
 $check(($localized['kicker'] ?? '') === 'Aktuell', 'published locale overlays the preset kicker');
+$effective = array_merge($localized, ['kicker' => 'Request-local heading']);
+$check(($effective['kicker'] ?? '') === 'Request-local heading', 'trusted request-local effective override wins after the locale overlay');
 $check(($localized['layout'] ?? '') === 'grid' && ($localized['limit'] ?? 0) === 7, 'runtime leaves structural query and layout values unchanged');
 $check(($localized['plugin_extension']['kept'] ?? false) === true, 'runtime preserves unknown extension configuration');
 $check(($runtime($source, ['id' => 9], $pdo)['kicker'] ?? '') === 'Aktuell', 'runtime callback tolerates an omitted Core context argument');

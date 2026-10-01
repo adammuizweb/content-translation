@@ -18,7 +18,7 @@ $required = [
     'Localized collection paths are invalid.',
     'Collection paths may only contain lowercase letters, numbers, slashes, underscores, and hyphens.',
     'Post and Page list paths must be different in each language.',
-    'Shortcodes',
+    'Shortcode Builder',
     'Translate Shortcode Preset management titles and localized kicker text without changing query or layout configuration.',
     'Manage Shortcode Presets',
     'Localized media',

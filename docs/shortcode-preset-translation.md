@@ -45,7 +45,9 @@ presentation needs a heading.
 Core calls `shortcode_preset_runtime_config` for each render after locale routing.
 On a request carrying `ct_request_locale`, the plugin loads only a complete,
 published translation for that preset and locale. A nonempty localized `kicker`
-replaces the runtime kicker. An empty value keeps Core's source heading behavior.
+replaces the persisted runtime kicker. An empty value keeps Core's source heading
+behavior. Core then merges bounded trusted request-local effective overrides, so
+an intentional `kicker` passed by trusted PHP wins for that render call.
 
 No JSON key other than `kicker` is accepted or copied. In particular, a
 translation cannot change source, post type, category, author, limit, offset,

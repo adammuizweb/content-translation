@@ -1094,6 +1094,11 @@ add_action('shortcode_layout_editor_after_header', function ($context, $pdo): vo
     echo '<div class="ct-layout-translation-heading"><div><strong>' . htmlspecialchars(__('Translations'), ENT_QUOTES, 'UTF-8') . '</strong>';
     echo '<span>' . htmlspecialchars(__('Translations belong to each Theme Template that uses this renderer. PHP remains the shared source for every language.'), ENT_QUOTES, 'UTF-8') . '</span></div>';
     echo '<code>' . htmlspecialchars($sectionName, ENT_QUOTES, 'UTF-8') . '</code></div>';
+    $renderer = ct_theme_section_renderer_status($pdo, $sectionName);
+    if (!$renderer['available']) {
+        echo '<p class="ct-layout-translation-empty">' . htmlspecialchars(__('Translation packages require a physical renderer owned by the active theme. Fallback renderers from another theme, global renderers, and semantic Core fallbacks are unavailable.'), ENT_QUOTES, 'UTF-8') . '</p></section>';
+        return;
+    }
     if ($usages === null) {
         echo '<p class="ct-layout-translation-empty">' . htmlspecialchars(__('Theme Template usage could not be loaded.'), ENT_QUOTES, 'UTF-8') . '</p></section>';
         return;

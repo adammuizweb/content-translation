@@ -1,5 +1,16 @@
 # Theme Translation
 
+Theme Section packages are offered only when every resolved renderer is a
+regular file physically owned by the active theme. Resolution through an
+inactive default-theme fallback, a global directory, or Core semantic fallback
+fails closed.
+
+Renderers that call trusted live composition APIs such as
+`render_shortcode_preset()` or `render_widget()` keep their freshly rendered
+HTML at runtime. The package still overlays translated semantic attributes and
+fallback values, but its stored HTML snapshot does not replace live query,
+Collection Layout, or pagination output.
+
 Content Translation supports five separate theme workflows:
 
 - **Theme Partials** translate database-backed posts whose `type` is `theme`.
@@ -15,7 +26,7 @@ Content Translation supports five separate theme workflows:
 All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-Content Translation `1.20.0` requires Jyavani Core `2.3.164` or newer. It
+Content Translation `1.20.1` requires Jyavani Core `2.3.164` or newer. It
 registers owner-labelled Customizer Text, Zone Gadget Text, and PHP Interface
 String actions directly on Core theme hooks; Theme Builder is not required. The
 PHP Source Editor context identifies the current slot owner and links each

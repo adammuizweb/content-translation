@@ -483,6 +483,64 @@ if (!function_exists('ct_theme_section_package_format')) {
         return hash('sha256', $json);
     }
 
+    function ct_theme_section_renderer_has_live_calls(string $path): ?bool {
+        if (!is_file($path) || is_link($path)) return null;
+        $size = filesize($path);
+        if (!is_int($size) || $size < 1 || $size > 1024 * 1024) return null;
+        $source = file_get_contents($path);
+        if (!is_string($source) || strlen($source) !== $size) return null;
+        $tokens = token_get_all($source);
+        $previous = null;
+        $count = count($tokens);
+        for ($index = 0; $index < $count; $index++) {
+            $token = $tokens[$index];
+            if (!is_array($token) || $token[0] !== T_STRING
+                || !in_array(strtolower($token[1]), ['render_shortcode_preset', 'render_widget'], true)
+                || in_array($previous, [T_FUNCTION, T_OBJECT_OPERATOR, T_DOUBLE_COLON], true)) {
+                if (!is_array($token) || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                    $previous = is_array($token) ? $token[0] : $token;
+                }
+                continue;
+            }
+            for ($next = $index + 1; $next < $count; $next++) {
+                $candidate = $tokens[$next];
+                if (is_array($candidate) && in_array($candidate[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) continue;
+                if ($candidate === '(') return true;
+                break;
+            }
+            $previous = T_STRING;
+        }
+        return false;
+    }
+
+    /** Resolve only a regular renderer physically owned by the active theme. */
+    function ct_theme_section_renderer_status(PDO $pdo, string $name): array {
+        $unavailable = ['available' => false, 'dynamic' => false, 'reason' => 'missing'];
+        if (!function_exists('theme_section_name_is_valid') || !theme_section_name_is_valid($name)
+            || !function_exists('get_active_theme_folder') || !function_exists('theme_section_theme_directory')
+            || !function_exists('theme_section_resolve_layout') || !function_exists('theme_section_path_is_within')) {
+            return $unavailable;
+        }
+        $folder = (string)get_active_theme_folder($pdo);
+        if ($folder === '') return $unavailable;
+        $root = theme_section_theme_directory($pdo, false, $folder);
+        $layout = theme_section_resolve_layout($name, $pdo);
+        $realRoot = is_string($root) ? realpath($root) : false;
+        $realLayout = is_string($layout) ? realpath($layout) : false;
+        if (!$realRoot || !$realLayout || !is_file($realLayout) || is_link($layout)
+            || !theme_section_path_is_within($realLayout, $realRoot)) {
+            return ['available' => false, 'dynamic' => false, 'reason' => $layout ? 'fallback' : 'missing'];
+        }
+        $dynamic = ct_theme_section_renderer_has_live_calls($realLayout);
+        if ($dynamic === null) return ['available' => false, 'dynamic' => false, 'reason' => 'unreadable'];
+        return [
+            'available' => true,
+            'dynamic' => $dynamic,
+            'reason' => '',
+            'path' => $realLayout,
+        ];
+    }
+
     function ct_theme_section_source_resource(PDO $pdo, array $post, bool $renderPreviews = true): ?array {
         if (($post['type'] ?? '') !== 'theme') return null;
         $composition = ct_parse_theme_section_composition((string)($post['content'] ?? ''));
@@ -499,6 +557,8 @@ if (!function_exists('ct_theme_section_package_format')) {
         foreach ($composition as $item) {
             $name = (string)$item['name'];
             if (!array_key_exists($name, $definitions)) return null;
+            $renderer = ct_theme_section_renderer_status($pdo, $name);
+            if (!$renderer['available']) return null;
             $definition = (array)$definitions[$name];
             $descriptor = theme_section_source_descriptor($name, $pdo);
             $fingerprint = theme_section_source_fingerprint($name, $pdo);
@@ -512,6 +572,7 @@ if (!function_exists('ct_theme_section_package_format')) {
                 'definition' => $definition,
                 'source_descriptor' => $descriptor,
                 'source_fingerprint' => $fingerprint,
+                'dynamic' => (bool)$renderer['dynamic'],
                 'source_html' => $renderPreviews ? render_theme_section($name, $renderAttrs, $pdo, [
                     'post' => $post,
                     'ct_theme_section_editor' => 'source',
@@ -829,6 +890,8 @@ add_filter('theme_section_html', function ($html, $name, $attrs, $context, $pdo,
     $sectionRoot = theme_section_theme_directory($pdo, false, $owner);
     $layoutPath = realpath($layout);
     if (!$sectionRoot || !$layoutPath || !theme_section_path_is_within($layoutPath, $sectionRoot)) return $html;
+    $renderer = ct_theme_section_renderer_status($pdo, (string)$name);
+    if (!$renderer['available'] || $renderer['dynamic'] || ($renderer['path'] ?? null) !== $layoutPath) return $html;
     $translated = $package['sections'][(string)$name]['html'] ?? null;
     return is_string($translated) && trim($translated) !== '' ? $translated : $html;
 }, 20, 6);

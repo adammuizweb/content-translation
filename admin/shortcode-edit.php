@@ -42,6 +42,7 @@ $config = function_exists('shortcode_preset_config_loaded')
     : (is_array($decodedConfig) ? $decodedConfig : []);
 $sourceKickerMode = ct_shortcode_preset_kicker_mode($config);
 $sourceKicker = $sourceKickerMode === 'custom' && is_scalar($config['kicker'] ?? null) ? trim((string)$config['kicker']) : '';
+$layoutSummary = ct_shortcode_preset_layout_summary($pdo, $config);
 $translation = ct_get_shortcode_preset_translation($pdo, $presetId, $locale);
 $overrides = is_array($translation['overrides'] ?? null) ? $translation['overrides'] : [];
 $sourceState = ct_shortcode_preset_source_state_token($preset);
@@ -106,6 +107,8 @@ $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
       <h3><?= __('Source preset') ?></h3>
       <div class="ct-field"><label><?= __('Management title') ?></label><div class="ct-readonly"><?= h((string)$preset['title']) ?></div></div>
       <div class="ct-field"><label><?= __('Source heading') ?></label><div class="ct-readonly"><?php if ($sourceKickerMode === 'custom'): ?><?= h($sourceKicker) ?><?php elseif ($sourceKickerMode === 'hidden'): ?><span class="muted"><?= __('Hidden') ?></span><?php else: ?><span class="muted"><?= __('Automatic category heading') ?></span><?php endif; ?></div></div>
+      <div class="ct-field"><label><?= __('Collection Layout') ?></label><div class="ct-readonly"><code><?= h((string)$layoutSummary['name']) ?></code></div></div>
+      <div class="ct-field"><label><?= __('Collection Layout owner') ?></label><div class="ct-readonly"><?php if ($layoutSummary['available']): ?><?= h((string)$layoutSummary['owner']) ?><?php else: ?><span class="muted"><?= __('The selected Collection Layout is unavailable.') ?></span><?php endif; ?></div></div>
       <p class="muted"><?= __('Category, post type, author, limits, ordering, layout, wrapper, and all unknown extension configuration remain controlled by the source preset and cannot be translated here.') ?></p>
     </section>
   </div>
