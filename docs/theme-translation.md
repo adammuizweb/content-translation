@@ -15,7 +15,14 @@ Content Translation supports five separate theme workflows:
 All workflows use reviewed draft/published records. The default content locale
 and its source values are never modified.
 
-Content Translation `1.14.0` requires Jyavani Core `2.3.108` or newer. Core
+Content Translation `1.20.0` requires Jyavani Core `2.3.164` or newer. It
+registers owner-labelled Customizer Text, Zone Gadget Text, and PHP Interface
+String actions directly on Core theme hooks; Theme Builder is not required. The
+PHP Source Editor context identifies the current slot owner and links each
+declared Customizer or active Theme Zone resource to its locale versions. A
+Theme Template assignment is shown as the runtime owner when it shadows the
+selected physical PHP file.
+Core
 `2.3.54` introduced the generic Theme Section renderer and hooks required by the
 `ct-theme-sections-v1` adapter; Core `2.3.55` added the canonical content routes
 used by localized Theme Templates and their sitemaps. Core `2.3.57` supplies the
@@ -282,7 +289,9 @@ search behavior and do not require a file-backed homepage translation.
 
 1. Add `slot` and explicit `translatable: true` declarations to the active
    theme's `theme.json`.
-2. Open **Tools / Content Translation / Theme Files**.
+2. Open **Tools / Content Translation / Customizer Text**. The resource is
+   marked **Used on frontend** only when its physical theme file currently owns
+   that slot. A Theme Template assignment is shown as the active alternative.
 3. Select a locale for the discovered resource.
 4. Compare each translation control with its effective source value from the
    theme's saved Customizer values.
@@ -301,8 +310,10 @@ ordering, booleans, and layout keys remain shared. Core passes complete rows to
 the generic bulk `theme_zone_items` filter so the plugin retains the stable item
 ID and performs one bounded lookup per rendered position.
 
-Open **Themes / Customize**, expand a gadget, and choose a locale from its
-translation controls. Drafts may be incomplete. Publishing requires every
+Open **Themes / Customize**. Each gadget with nonempty declared source text shows
+the source locale plus persistent locale status links without requiring the
+gadget to be expanded. Open the gadget itself to edit source text, or choose a
+locale badge to edit the visitor-facing translation. Drafts may be incomplete. Publishing requires every
 nonempty declared source text to have a translated value. The editor carries a
 fingerprint of widget type, schema, and source values plus the complete loaded
 translation state. Runtime uses only complete, current, published rows.
@@ -314,7 +325,7 @@ not stored as translated text.
 
 ## Theme UI String contract
 
-Open **Tools / Content Translation / Theme UI Strings** and select a registered
+Open **Tools / Content Translation / PHP Interface Strings** and select a registered
 physical theme. Discovery walks regular PHP files below that exact theme root,
 rejects symlinks and escapes, and enforces file-size, file-count, and aggregate
 limits. `token_get_all()` accepts only complete calls whose source and optional
@@ -351,6 +362,11 @@ The plugin consumes these generic Core integration points:
 - `theme_slot_post_data` adapts a custom database theme post resolved for a slot.
 - `theme_editor_before_content` adds the database partial translation picker.
 - `theme_mod_value` adapts a declared file-backed Customizer value.
+- `theme_customize_actions` explains the active homepage and Customizer
+  translation ownership above Core's Customize canvas.
+- `theme_zone_item_summary` exposes persistent source/locale status for each
+  translatable gadget; `theme_zone_item_editor_actions` remains the fallback on
+  older compatible Core installations.
 
 File resources never set `ct_current_post`, so a translated header, footer, or
 file homepage cannot be mistaken for a database post by canonical, hreflang, or

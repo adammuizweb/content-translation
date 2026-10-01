@@ -3,6 +3,425 @@ declare(strict_types=1);
 
 // Content Translation — admin hooks
 
+function ct_core_theme_action_context(array $themeRow, array $context, PDO $pdo): ?array {
+    $actorId = filter_var($context['actor_id'] ?? $context['user_id'] ?? null, FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1],
+    ]);
+    if ($actorId === false || !ct_user_can_integration($pdo, 'core.themes.manage', $actorId)
+        || !ct_user_is_site_owner($pdo, $actorId)) return null;
+
+    $folder = is_string($context['folder'] ?? null) ? trim($context['folder']) : '';
+    $rowFolder = is_string($themeRow['folder_name'] ?? null) ? trim($themeRow['folder_name']) : '';
+    if ($folder === '' || strlen($folder) > 100
+        || preg_match('/\A[A-Za-z0-9_-][A-Za-z0-9._-]*\z/D', $folder) !== 1
+        || ($rowFolder !== '' && !hash_equals($rowFolder, $folder))) return null;
+
+    $base = is_string($context['admin_base_path'] ?? null) ? rtrim($context['admin_base_path'], '/') : '';
+    if ($base === '' || !str_starts_with($base, '/') || str_starts_with($base, '//')
+        || str_contains($base, '?') || str_contains($base, '#')) return null;
+    return ['actor_id' => $actorId, 'folder' => $folder, 'base' => $base];
+}
+
+function ct_core_theme_url(string $base, array $query): string {
+    return $base . '/?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+}
+
+function ct_core_theme_action(string $class, string $url, string $label): string {
+    return '<a class="' . htmlspecialchars($class, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+        . '" href="' . htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '">'
+        . htmlspecialchars(__($label), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</a>';
+}
+
+function ct_admin_translation_status_label(string $status): string {
+    return match ($status) {
+        'published' => __('Published'),
+        'draft' => __('Draft'),
+        'incomplete' => __('Incomplete'),
+        'stale' => __('Stale source'),
+        default => __('Add'),
+    };
+}
+
+function ct_theme_source_locale_chips_html(string $sourceLocale, array $locales, array $statuses, callable $urlForLocale): string {
+    $html = '<div class="ct-locale-chips"><span class="ct-locale-chip ct-locale-chip--source"><b>'
+        . htmlspecialchars(strtoupper($sourceLocale), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+        . htmlspecialchars(__('Source'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></span>';
+    foreach (array_slice($locales, 0, 20) as $locale) {
+        if (!is_string($locale) || $locale === '') continue;
+        $status = is_string($statuses[$locale] ?? null) ? $statuses[$locale] : 'empty';
+        $url = $urlForLocale($locale);
+        if (!is_string($url) || $url === '') continue;
+        $html .= '<a class="ct-locale-chip ct-locale-chip--' . htmlspecialchars($status, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '" href="' . htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"><b>'
+            . htmlspecialchars(strtoupper($locale), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+            . htmlspecialchars(ct_admin_translation_status_label($status), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></a>';
+    }
+    return $html . '</div>';
+}
+
+function ct_theme_zone_translation_actions_html(array $item, array $context, PDO $pdo): string {
+    if (!ct_user_can_workspace($pdo) || !ct_user_is_site_owner($pdo)
+        || !user_can($pdo, ct_current_user_id(), 'core.themes.manage')) return '';
+    $resource = ct_theme_zone_resource_from_row($item);
+    $contextFolder = is_string($context['theme_folder'] ?? null) ? $context['theme_folder'] : '';
+    $contextZone = is_string($context['zone_slug'] ?? null) ? $context['zone_slug'] : '';
+    $contextPosition = is_string($context['position'] ?? null) ? $context['position'] : '';
+    if (!$resource || empty($item['active'])
+        || !hash_equals((string)$resource['theme_folder'], $contextFolder)
+        || !hash_equals((string)$resource['zone_slug'], $contextZone)
+        || !hash_equals((string)$resource['position'], $contextPosition)
+        || array_filter($resource['source_values'], static fn(string $value): bool => trim($value) !== '') === []) return '';
+    $locales = array_slice(ct_enabled_locales($pdo), 0, 20);
+    if ($locales === []) return '';
+    $statuses = ct_theme_zone_translation_statuses($pdo, (int)$resource['id'], $resource);
+    $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
+    $fallback = $base . '/?page=admin/themes/customize';
+    $returnUrl = function_exists('adiwira_safe_return_to')
+        ? adiwira_safe_return_to($context['return_url'] ?? null, $fallback)
+        : $fallback;
+    $sourceLocale = function_exists('content_default_locale') ? content_default_locale() : 'en';
+    $html = '<div class="ct-theme-zone-summary"><span class="ct-theme-zone-summary__label">'
+        . htmlspecialchars(__('Frontend text'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>'
+        . '<span class="ct-locale-chip ct-locale-chip--source"><b>'
+        . htmlspecialchars(strtoupper($sourceLocale), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+        . htmlspecialchars(__('Source'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></span>';
+    foreach ($locales as $locale) {
+        $status = $statuses[$locale] ?? 'empty';
+        $url = $base . '/?' . http_build_query([
+            'page' => 'admin/tools/content-translation/theme-zone-edit',
+            'item_id' => $resource['id'],
+            'locale' => $locale,
+            'return_to' => $returnUrl,
+        ], '', '&', PHP_QUERY_RFC3986);
+        $html .= '<a class="ct-locale-chip ct-locale-chip--' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8')
+            . '" href="' . htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"><b>'
+            . htmlspecialchars(strtoupper($locale), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+            . htmlspecialchars(ct_admin_translation_status_label($status), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></a>';
+    }
+    return $html . '</div>';
+}
+
+add_action('theme_manager_theme_actions', function (array $themeRow, array $manifest, array $context): void {
+    try {
+        $hookPdo = $GLOBALS['pdo'] ?? null;
+        if (!$hookPdo instanceof PDO) return;
+        $action = ct_core_theme_action_context($themeRow, $context, $hookPdo);
+        if ($action === null) return;
+        $folder = $action['folder'];
+        $base = $action['base'];
+        $returnTo = ct_core_theme_url($base, ['page' => 'admin/themes/assign']);
+        $resources = array_slice(ct_theme_file_resources($hookPdo, $folder), 0, 128, true);
+        $items = [];
+        if ($resources !== []) {
+            $items[] = ct_core_theme_action('tm-action ct-theme-action', ct_core_theme_url($base, [
+                'page' => 'admin/tools/content-translation/theme-files',
+                'theme_folder' => $folder,
+                'return_to' => $returnTo,
+            ]), 'Customizer Text');
+        }
+        if (!empty($context['is_active']) && ct_theme_zone_resources($hookPdo, $folder, null, true, 1) !== []) {
+            $items[] = ct_core_theme_action('tm-action ct-theme-action', ct_core_theme_url($base, [
+                'page' => 'admin/themes/customize',
+            ]), 'Zone Gadget Text');
+        }
+        $items[] = ct_core_theme_action('tm-action ct-theme-action', ct_core_theme_url($base, [
+            'page' => 'admin/tools/content-translation/theme-strings',
+            'theme_folder' => $folder,
+            'return_to' => $returnTo,
+        ]), 'PHP Interface Strings');
+        echo '<div class="tm-action-group tm-action-group--content-translation">'
+            . '<span class="tm-action-owner ct-action-owner">' . htmlspecialchars(__('Content Translation'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>'
+            . implode('', $items) . '</div>';
+    } catch (Throwable $error) {
+        error_log('[content-translation-theme-actions] ' . $error->getMessage());
+    }
+}, 20);
+
+add_action('theme_source_editor_actions', function (array $themeRow, array $context, PDO $hookPdo): void {
+    try {
+        $action = ct_core_theme_action_context($themeRow, $context, $hookPdo);
+        if ($action === null) return;
+        $folder = $action['folder'];
+        $base = $action['base'];
+        $fileId = is_string($context['file_id'] ?? null) && preg_match('/\A[a-f0-9]{64}\z/D', $context['file_id']) === 1
+            ? $context['file_id']
+            : null;
+        $returnQuery = ['page' => 'admin/themes/source', 'folder' => $folder];
+        if ($fileId !== null) $returnQuery['file'] = $fileId;
+        $returnTo = ct_core_theme_url($base, $returnQuery);
+
+        $slots = [];
+        foreach (is_array($context['slot_keys'] ?? null) ? $context['slot_keys'] : [] as $slot) {
+            if (is_string($slot) && strlen($slot) <= 150 && preg_match('/\A[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\z/D', $slot) === 1) {
+                $slots[$slot] = true;
+            }
+            if (count($slots) >= 256) break;
+        }
+        $resourceSlots = [];
+        foreach (ct_theme_file_resources($hookPdo, $folder) as $resource) {
+            $resourceSlot = is_array($resource) && is_string($resource['slot_key'] ?? null)
+                ? $resource['slot_key']
+                : '';
+            if ($resourceSlot !== '') $resourceSlots[$resourceSlot] = true;
+        }
+        $translatableSlots = [];
+        foreach (array_keys($slots) as $slot) {
+            if (isset($resourceSlots[$slot])) $translatableSlots[] = $slot;
+        }
+
+        $items = [];
+        if ($translatableSlots !== []) {
+            $query = [
+                'page' => 'admin/tools/content-translation/theme-files',
+                'theme_folder' => $folder,
+                'return_to' => $returnTo,
+            ];
+            if (count($translatableSlots) === 1) $query['slot_key'] = $translatableSlots[0];
+            $items[] = ct_core_theme_action('theme-source-action ct-theme-source-action', ct_core_theme_url($base, $query), 'Customizer Text');
+        }
+        $zoneResources = [];
+        if (!empty($context['active'])) {
+            foreach (array_keys($slots) as $slot) {
+                foreach (ct_theme_zone_resources($hookPdo, $folder, $slot) as $resource) {
+                    if (array_filter($resource['source_values'] ?? [], static fn($value): bool => is_scalar($value) && trim((string)$value) !== '') !== []) {
+                        $zoneResources[] = $resource;
+                    }
+                }
+            }
+        }
+        if ($zoneResources !== []) {
+            $items[] = ct_core_theme_action('theme-source-action ct-theme-source-action', ct_core_theme_url($base, [
+                'page' => 'admin/themes/customize',
+                'edit' => (int)$zoneResources[0]['id'],
+            ]), 'Zone Gadget Text');
+        }
+        $items[] = ct_core_theme_action('theme-source-action ct-theme-source-action', ct_core_theme_url($base, [
+            'page' => 'admin/tools/content-translation/theme-strings',
+            'theme_folder' => $folder,
+            'return_to' => $returnTo,
+        ]), 'PHP Interface Strings');
+        echo '<div class="theme-source-action-group theme-source-action-group--content-translation">'
+            . '<span class="theme-source-action-owner ct-action-owner">' . htmlspecialchars(__('Content Translation'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>'
+            . implode('', $items) . '</div>';
+    } catch (Throwable $error) {
+        error_log('[content-translation-source-actions] ' . $error->getMessage());
+    }
+}, 20);
+
+add_action('theme_source_editor_context', function (array $themeRow, array $context, PDO $hookPdo): void {
+    try {
+        $action = ct_core_theme_action_context($themeRow, $context, $hookPdo);
+        if ($action === null || !function_exists('resolve_template')) return;
+        $folder = $action['folder'];
+        $base = $action['base'];
+        $fileId = is_string($context['file_id'] ?? null) && preg_match('/\A[a-f0-9]{64}\z/D', $context['file_id']) === 1
+            ? $context['file_id']
+            : null;
+        $relativePath = is_string($context['relative_path'] ?? null) ? trim($context['relative_path']) : '';
+        if ($fileId === null || $relativePath === '' || strlen($relativePath) > 500) return;
+        $slots = [];
+        foreach (is_array($context['slot_keys'] ?? null) ? $context['slot_keys'] : [] as $slot) {
+            if (is_string($slot) && strlen($slot) <= 150
+                && preg_match('/\A[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\z/D', $slot) === 1) $slots[$slot] = true;
+            if (count($slots) >= 256) break;
+        }
+        if ($slots === []) return;
+
+        $fallback = ct_core_theme_url($base, ['page' => 'admin/themes/source', 'folder' => $folder, 'file' => $fileId]);
+        $returnUrl = function_exists('adiwira_safe_return_to')
+            ? adiwira_safe_return_to($context['return_url'] ?? null, $fallback)
+            : $fallback;
+        $sourceLocale = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        $locales = array_slice(ct_enabled_locales($hookPdo), 0, 20);
+        $fileResourcesBySlot = [];
+        foreach (ct_theme_file_resources($hookPdo, $folder) as $resource) {
+            $slot = is_array($resource) && is_string($resource['slot_key'] ?? null) ? $resource['slot_key'] : '';
+            if ($slot !== '' && isset($slots[$slot])) $fileResourcesBySlot[$slot] = $resource;
+        }
+        $fileStatuses = ct_theme_file_translation_statuses($hookPdo, array_values($fileResourcesBySlot));
+        $zoneResourcesBySlot = [];
+        $allZoneResources = [];
+        foreach (array_keys($slots) as $slot) {
+            foreach (ct_theme_zone_resources($hookPdo, $folder, $slot) as $resource) {
+                if (array_filter($resource['source_values'] ?? [], static fn($value): bool => is_scalar($value) && trim((string)$value) !== '') === []) continue;
+                $zoneResourcesBySlot[$slot][] = $resource;
+                $allZoneResources[] = $resource;
+            }
+        }
+        $zoneStatuses = ct_theme_zone_translation_statuses_for_resources($hookPdo, $allZoneResources);
+
+        echo '<section class="ct-source-context"><div class="ct-source-context__heading"><div><strong>'
+            . htmlspecialchars(__('Frontend translation context'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong><span>'
+            . htmlspecialchars(__('Source ownership and visitor-language versions connected to this PHP file.'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '</span></div><a href="' . htmlspecialchars(ct_core_theme_url($base, ['page' => 'admin/tools/content-translation']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '">'
+            . htmlspecialchars(__('Open Content Translation'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</a></div><div class="ct-source-context__slots">';
+
+        foreach (array_keys($slots) as $slot) {
+            try {
+                $resolved = resolve_template($hookPdo, $slot);
+            } catch (Throwable $resolveError) {
+                error_log('[content-translation-source-context] Runtime resolution failed: ' . $resolveError->getMessage());
+                $resolved = ['type' => 'unavailable'];
+            }
+            $runtimeType = (string)($resolved['type'] ?? 'unavailable');
+            $runtimePost = $runtimeType === 'custom_post' && is_array($resolved['post'] ?? null) ? $resolved['post'] : null;
+            $runtimeFolder = $runtimeType === 'theme_file' ? (string)($resolved['theme_folder'] ?? '') : '';
+            $runtimeFile = $runtimeType === 'theme_file' ? (string)($resolved['theme_file'] ?? '') : '';
+            $selectedRuntime = $runtimeType === 'theme_file' && $runtimeFolder !== '' && $runtimeFile !== ''
+                && hash_equals($folder, $runtimeFolder) && hash_equals($relativePath, $runtimeFile);
+            if ($selectedRuntime) {
+                $runtimeLabel = __('Selected PHP file');
+                $runtimeClass = 'active';
+            } elseif ($runtimePost !== null) {
+                $runtimeLabel = __('Theme Template') . ': ' . (string)($runtimePost['title'] ?? ('#' . (int)($runtimePost['id'] ?? 0)));
+                $runtimeClass = 'shadowed';
+            } elseif ($runtimeType === 'theme_file' && $runtimeFolder !== '') {
+                $runtimeLabel = __('Theme PHP') . ': ' . $runtimeFolder;
+                $runtimeClass = 'inactive';
+            } else {
+                $runtimeLabel = __('Unavailable');
+                $runtimeClass = 'inactive';
+            }
+            echo '<article class="ct-source-context__slot"><header><div><span>'
+                . htmlspecialchars(__('Frontend slot'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span><code>'
+                . htmlspecialchars($slot, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code></div><span class="ct-runtime-state ct-runtime-state--'
+                . htmlspecialchars($runtimeClass, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars(__('Runtime source') . ': ' . $runtimeLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span></header>';
+
+            if ($runtimePost !== null) {
+                $postId = (int)($runtimePost['id'] ?? 0);
+                $postStatuses = [];
+                foreach ($locales as $locale) {
+                    $translation = ct_get_translation($hookPdo, $postId, $locale);
+                    $postStatuses[$locale] = !is_array($translation) ? 'empty'
+                        : ((string)($translation['status'] ?? 'draft') !== 'published' ? 'draft'
+                            : (ct_post_translation_is_complete($hookPdo, $translation) ? 'published' : 'incomplete'));
+                }
+                $postPage = function_exists('ct_parse_theme_section_composition')
+                    && ct_parse_theme_section_composition((string)($runtimePost['content'] ?? '')) !== null
+                    ? 'admin/tools/content-translation/theme-section-edit'
+                    : 'admin/tools/content-translation/edit';
+                echo '<div class="ct-source-context__resource"><div><b>'
+                    . htmlspecialchars(__('Theme Template'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+                    . htmlspecialchars(__('This stored template currently replaces the selected PHP file on the frontend.'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></div>'
+                    . ct_theme_source_locale_chips_html($sourceLocale, $locales, $postStatuses, static fn(string $locale): string => ct_core_theme_url($base, [
+                        'page' => $postPage, 'post_id' => $postId, 'locale' => $locale, 'return_to' => $returnUrl,
+                    ])) . '</div>';
+            }
+
+            $fileResource = $fileResourcesBySlot[$slot] ?? null;
+            if (is_array($fileResource)) {
+                $resourceId = (string)$fileResource['id'];
+                echo '<div class="ct-source-context__resource"><div><b>'
+                    . htmlspecialchars(__('Customizer Text'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+                    . htmlspecialchars($selectedRuntime ? __('Used on frontend') : __('Stored but not used by the current frontend assignment'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></div>'
+                    . ct_theme_source_locale_chips_html($sourceLocale, $locales, $fileStatuses[$resourceId] ?? [], static fn(string $locale): string => ct_core_theme_url($base, [
+                        'page' => 'admin/tools/content-translation/theme-file-edit', 'theme_folder' => $folder,
+                        'slot_key' => $slot, 'locale' => $locale, 'return_to' => $returnUrl,
+                    ])) . '</div>';
+            }
+
+            foreach ($zoneResourcesBySlot[$slot] ?? [] as $resource) {
+                $itemId = (int)$resource['id'];
+                $title = trim((string)($resource['title'] ?? ''));
+                if ($title === '') $title = '#' . $itemId;
+                $location = $title . ' - ' . (string)($resource['position'] ?? '');
+                echo '<div class="ct-source-context__resource"><div><b>'
+                    . htmlspecialchars(__('Zone Gadget Text'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
+                    . htmlspecialchars($location . ($selectedRuntime ? '' : ' - ' . __('Not used on frontend')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</small></div>'
+                    . ct_theme_source_locale_chips_html($sourceLocale, $locales, $zoneStatuses[$itemId] ?? [], static fn(string $locale): string => ct_core_theme_url($base, [
+                        'page' => 'admin/tools/content-translation/theme-zone-edit', 'item_id' => $itemId,
+                        'locale' => $locale, 'return_to' => $returnUrl,
+                    ])) . '</div>';
+            }
+            echo '</article>';
+        }
+        echo '</div></section>';
+    } catch (Throwable $error) {
+        error_log('[content-translation-source-context] ' . $error->getMessage());
+    }
+}, 20);
+
+add_action('theme_customize_actions', function (array $themeRow, array $context, PDO $hookPdo): void {
+    try {
+        $action = ct_core_theme_action_context($themeRow, $context, $hookPdo);
+        if ($action === null) return;
+        $folder = $action['folder'];
+        $base = $action['base'];
+        $fallback = $base . '/?page=admin/themes/customize';
+        $returnUrl = function_exists('adiwira_safe_return_to')
+            ? adiwira_safe_return_to($context['return_url'] ?? null, $fallback)
+            : $fallback;
+        $sourceLocale = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        $locales = array_slice(ct_enabled_locales($hookPdo), 0, 20);
+        $homepage = ct_homepage_theme_post($hookPdo);
+        $resources = ct_theme_file_resources($hookPdo, $folder);
+
+        echo '<section class="ct-customize-guide"><div class="ct-customize-guide__heading"><div><strong>'
+            . htmlspecialchars(__('Frontend translations'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong><span>'
+            . htmlspecialchars(sprintf(__('You are editing the %s source. Published locale values replace only declared frontend text; layout and behavior stay shared.'), strtoupper($sourceLocale)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '</span></div><a href="' . htmlspecialchars($base . '/?page=admin/tools/content-translation', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '">'
+            . htmlspecialchars(__('Open Content Translation'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</a></div>';
+
+        if (is_array($homepage)) {
+            $postId = (int)($homepage['id'] ?? 0);
+            $isPackage = function_exists('ct_parse_theme_section_composition')
+                && ct_parse_theme_section_composition((string)($homepage['content'] ?? '')) !== null;
+            echo '<div class="ct-customize-guide__row"><div><b>' . htmlspecialchars(__('Homepage frontend source'), ENT_QUOTES, 'UTF-8')
+                . '</b><span>' . htmlspecialchars(__('Theme Template'), ENT_QUOTES, 'UTF-8') . ': '
+                . htmlspecialchars((string)($homepage['title'] ?? ('#' . $postId)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . '</span></div><div class="ct-locale-chips"><span class="ct-locale-chip ct-locale-chip--source"><b>'
+                . htmlspecialchars(strtoupper($sourceLocale), ENT_QUOTES, 'UTF-8') . '</b><small>' . htmlspecialchars(__('Source'), ENT_QUOTES, 'UTF-8') . '</small></span>';
+            foreach ($locales as $locale) {
+                $translation = ct_get_translation($hookPdo, $postId, $locale);
+                $status = !is_array($translation)
+                    ? 'empty'
+                    : ((string)($translation['status'] ?? 'draft') !== 'published'
+                        ? 'draft'
+                        : (ct_post_translation_is_complete($hookPdo, $translation) ? 'published' : 'incomplete'));
+                $page = $isPackage ? 'admin/tools/content-translation/theme-section-edit' : 'admin/tools/content-translation/edit';
+                $url = $base . '/?' . http_build_query(['page' => $page, 'post_id' => $postId, 'locale' => $locale, 'return_to' => $returnUrl], '', '&', PHP_QUERY_RFC3986);
+                echo '<a class="ct-locale-chip ct-locale-chip--' . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . '" href="'
+                    . htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"><b>' . htmlspecialchars(strtoupper($locale), ENT_QUOTES, 'UTF-8')
+                    . '</b><small>' . htmlspecialchars(ct_admin_translation_status_label($status), ENT_QUOTES, 'UTF-8') . '</small></a>';
+            }
+            echo '</div></div>';
+        }
+
+        $inactiveResources = [];
+        foreach ($resources as $resource) {
+            $runtime = ct_theme_file_runtime_state($hookPdo, $resource);
+            if (!$runtime['active']) $inactiveResources[] = ['resource' => $resource, 'runtime' => $runtime];
+        }
+        if ($inactiveResources !== []) {
+            $themeFilesUrl = $base . '/?' . http_build_query([
+                'page' => 'admin/tools/content-translation/theme-files',
+                'theme_folder' => $folder,
+                'return_to' => $returnUrl,
+            ], '', '&', PHP_QUERY_RFC3986);
+            echo '<div class="ct-customize-guide__row ct-customize-guide__row--warning"><div><b>'
+                . htmlspecialchars(__('Stored Customizer translations'), ENT_QUOTES, 'UTF-8') . '</b><span>'
+                . htmlspecialchars(sprintf(__('%d resource(s) are not used by the current frontend assignment. Editing them will not change the visible page.'), count($inactiveResources)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . '</span></div><a class="ct-customize-guide__link" href="' . htmlspecialchars($themeFilesUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '">'
+                . htmlspecialchars(__('Review Customizer Text'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</a></div>';
+        }
+        echo '<div class="ct-customize-guide__row"><div><b>' . htmlspecialchars(__('Header and footer text'), ENT_QUOTES, 'UTF-8')
+            . '</b><span>' . htmlspecialchars(__('Open a gadget to edit its source text, or use the always-visible locale badges on that gadget to edit what visitors see.'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '</span></div></div></section>';
+    } catch (Throwable $error) {
+        error_log('[content-translation-customize-actions] ' . $error->getMessage());
+    }
+}, 20);
+
+add_action('theme_zone_item_summary', function ($item, $context, $pdo): void {
+    if (!is_array($item) || !is_array($context) || !$pdo instanceof PDO) return;
+    try {
+        echo ct_theme_zone_translation_actions_html($item, $context, $pdo);
+    } catch (Throwable $error) {
+        error_log('[content-translation] Theme Zone summary failed: ' . $error->getMessage());
+    }
+}, 10, 3);
+
 // ─── Ensure schema exists when in admin ───
 add_action('admin_init', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
@@ -736,26 +1155,9 @@ add_action('shortcode_layout_editor_after_header', function ($context, $pdo): vo
 
 add_action('theme_zone_item_editor_actions', function ($item, $context, $pdo): void {
     if (!is_array($item) || !is_array($context) || !$pdo instanceof PDO
-        || !ct_user_can_workspace($pdo) || !ct_user_is_site_owner($pdo)
-        || !user_can($pdo, ct_current_user_id(), 'core.themes.manage')) return;
+        || ($context['summary_available'] ?? false) === true) return;
     try {
-        $resource = ct_theme_zone_resource_from_row($item);
-        if (!$resource) return;
-        $locales = array_slice(ct_enabled_locales($pdo), 0, 20);
-        if ($locales === []) return;
-        $statuses = ct_theme_zone_translation_statuses($pdo, (int)$resource['id']);
-        $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
-        $returnUrl = is_string($context['return_url'] ?? null) ? $context['return_url'] : '';
-        echo '<div class="ct-theme-zone-actions" style="margin-top:.8rem;padding-top:.75rem;border-top:1px solid rgba(127,127,127,.18)">';
-        echo '<strong style="display:block;margin-bottom:.45rem;font-size:12px">' . htmlspecialchars(__('Translations'), ENT_QUOTES, 'UTF-8') . '</strong><div style="display:flex;flex-wrap:wrap;gap:.35rem">';
-        foreach ($locales as $locale) {
-            $status = $statuses[$locale] ?? 'empty';
-            $label = strtoupper($locale) . ' / ' . __($status === 'empty' ? 'Add' : ucfirst($status));
-            $query = ['page' => 'admin/tools/content-translation/theme-zone-edit', 'item_id' => $resource['id'], 'locale' => $locale];
-            if ($returnUrl !== '') $query['return_to'] = $returnUrl;
-            echo '<a class="btn btn-sm btn-secondary" href="' . htmlspecialchars($base . '/?' . http_build_query($query), ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
-        }
-        echo '</div></div>';
+        echo ct_theme_zone_translation_actions_html($item, $context, $pdo);
     } catch (Throwable $error) {
         error_log('[content-translation] Theme Zone editor actions failed: ' . $error->getMessage());
     }

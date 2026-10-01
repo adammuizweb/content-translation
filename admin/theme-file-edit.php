@@ -19,6 +19,18 @@ $returnToInput = $_POST['return_to'] ?? $_GET['return_to'] ?? null;
 $listUrl = function_exists('adiwira_safe_return_to')
     ? adiwira_safe_return_to($returnToInput, $overviewUrl)
     : $overviewUrl;
+$returnPage = '';
+$returnQuery = parse_url($listUrl, PHP_URL_QUERY);
+if (is_string($returnQuery)) {
+    parse_str($returnQuery, $returnParams);
+    $returnPage = is_string($returnParams['page'] ?? null) ? trim($returnParams['page'], '/') : '';
+}
+$backLabel = match ($returnPage) {
+    'admin/tools/content-translation/theme-files' => __('Back to Customizer Text'),
+    'admin/themes/source' => __('Back to Source Editor'),
+    'admin/themes/customize' => __('Back to Customize'),
+    default => __('Back'),
+};
 $deleteReturnUrl = $listUrl === $overviewUrl ? $overviewUrl . '&flash=' . rawurlencode(__('Translation deleted.')) : $listUrl;
 $scalar = static fn(mixed $value): string => is_scalar($value) ? trim((string)$value) : '';
 $themeFolder = $scalar($_POST['theme_folder'] ?? $_GET['theme_folder'] ?? '');
@@ -34,7 +46,7 @@ $editorUrl = $base . '/?' . http_build_query([
 ]);
 
 if (!$resource || !in_array($locale, ct_enabled_locales($pdo), true)) {
-    echo '<div class="ct-admin"><div class="ct-flash ct-flash-error">' . h(__('Theme file resource or locale is not available.')) . '</div><a class="btn" href="' . h($listUrl) . '">' . h(__('Back')) . '</a></div>';
+    echo '<div class="ct-admin"><div class="ct-flash ct-flash-error">' . h(__('Theme file resource or locale is not available.')) . '</div><a class="btn ct-back-link" href="' . h($listUrl) . '">' . svg_ico('arrow-left') . '<span>' . h($backLabel) . '</span></a></div>';
     return;
 }
 
@@ -78,6 +90,9 @@ $missingSourceFields = array_keys(array_filter(
 ));
 $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : (function_exists('default_locale') ? default_locale() : 'en');
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
+$runtimeState = ct_theme_file_runtime_state($pdo, $resource);
+$localeStatuses = ct_theme_file_translation_statuses($pdo, [$resource]);
+$enabledLocales = array_slice(ct_enabled_locales($pdo), 0, 20);
 $formUrl = $editorUrl . '&action=save';
 $displaySource = static function (mixed $value): string {
     if (is_bool($value)) return $value ? __('Enabled') : __('Disabled');
@@ -91,20 +106,23 @@ $displaySource = static function (mixed $value): string {
 <div class="ct-admin ct-editor">
   <div class="ct-header">
     <div>
-      <h2><?= __('Edit Theme File Translation') ?> - <?= h(strtoupper($locale)) ?></h2>
+      <h2><?= __('Customizer Text') ?> - <?= h(strtoupper($locale)) ?></h2>
       <p class="muted"><?= h((string)$resource['label']) ?> <code><?= h($themeFolder . ':' . $slotKey) ?></code></p>
     </div>
-    <a class="btn" href="<?= h($listUrl) ?>"><?= __('Back') ?></a>
+    <a class="btn ct-back-link" href="<?= h($listUrl) ?>"><?= svg_ico('arrow-left') ?><span><?= h($backLabel) ?></span></a>
   </div>
 
   <?php if (!empty($_GET['flash'])): ?><div class="ct-flash"><?= h((string)$_GET['flash']) ?></div><?php endif; ?>
   <?php if (!empty($_GET['error'])): ?><div class="ct-flash ct-flash-error"><?= h((string)$_GET['error']) ?></div><?php endif; ?>
+  <?php if (!$runtimeState['active']): ?><div class="ct-flash ct-flash-warning"><strong><?= __('Not used on the current frontend.') ?></strong> <?= $runtimeState['type'] === 'theme_template' ? h(__('This slot is rendered by Theme Template:') . ' ' . (string)$runtimeState['label']) : h(__('The current frontend assignment resolves this slot from another source. Stored translations remain available but will not change the visible page.')) ?></div><?php endif; ?>
   <?php if ($translation && empty($translation['values_valid'])): ?>
     <div class="ct-flash ct-flash-error"><?= __('The stored field values contain invalid JSON. Save a valid draft or delete this translation.') ?></div>
   <?php endif; ?>
   <?php if ($missingSourceFields): ?>
     <div class="ct-flash ct-flash-warning"><?= __('Some source values are not saved in Theme Customize and cannot be displayed here. Save the source-language Customizer values before reviewing this translation.') ?></div>
   <?php endif; ?>
+
+  <div class="ct-editor-language-nav"><div><strong><?= __('Frontend language versions') ?></strong><span><?= __('The source value comes from Themes → Customize. Published locale values replace it only when this resource is used on the frontend.') ?></span></div><div class="ct-locale-chips"><span class="ct-locale-chip ct-locale-chip--source"><b><?= h(strtoupper($defaultLocale)) ?></b><small><?= __('Source') ?></small></span><?php foreach ($enabledLocales as $siblingLocale): ?><?php $siblingStatus = $localeStatuses[$resource['id']][$siblingLocale] ?? 'empty'; $siblingUrl = $base . '/?' . http_build_query(['page' => 'admin/tools/content-translation/theme-file-edit', 'theme_folder' => $themeFolder, 'slot_key' => $slotKey, 'locale' => $siblingLocale, 'return_to' => $listUrl], '', '&', PHP_QUERY_RFC3986); ?><a class="ct-locale-chip ct-locale-chip--<?= h($siblingStatus) ?><?= $siblingLocale === $locale ? ' is-current' : '' ?>" href="<?= h($siblingUrl) ?>"><b><?= h(strtoupper($siblingLocale)) ?></b><small><?= h(ct_admin_translation_status_label($siblingStatus)) ?></small></a><?php endforeach; ?></div></div>
 
   <form method="post" action="<?= h($formUrl) ?>" class="ct-panel ct-translation-panel<?= $isRtl ? ' ct-rtl-editor' : '' ?>" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">

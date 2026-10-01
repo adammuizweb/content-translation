@@ -8,17 +8,26 @@ search, sitemaps, and `hreflang` output.
 
 ## Requirements
 
-- Jyavani Core 2.3.155 or newer
+- Jyavani Core 2.3.164 or newer
 - PHP 8.1 or newer
 - PHP extensions: PDO and JSON
+
+Theme Builder is not required. Theme Manager and Theme Source Editor actions are
+registered directly against Core hooks and remain available independently of
+other theme-authoring plugins.
 
 ## Features
 
 - Translate Posts and Pages with separate draft and published states.
 - Translate Categories, author biographies, site identity, menu labels, and
   selected sidebar content.
-- Translate Theme Partials, Theme Sections, declared Theme File values, Theme
-  Zones, and discoverable theme UI strings.
+- Translate Theme Partials, Theme Sections, declared Customizer text, Theme
+  Zone gadget text, and discoverable PHP interface strings.
+- See the source language and every locale status directly in Core Customize and
+  the installed-theme PHP Source Editor, with runtime Theme Template ownership
+  and inactive or overridden Customizer resources identified before editing.
+- Open owner-labelled Customizer Text, Zone Gadget Text, and PHP Interface String
+  actions directly from Core theme surfaces.
 - Translate the controlled fields of Core Shortcode Presets.
 - Configure locale-specific Post and Page collection paths.
 - Publish locale-prefixed routes, canonical URLs, `hreflang` links, localized

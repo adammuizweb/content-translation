@@ -59,15 +59,19 @@ $translation = ct_get_theme_zone_translation($pdo, $itemId, $locale);
 $values = is_array($translation['values'] ?? null) ? $translation['values'] : [];
 $translationState = ct_theme_zone_translation_state($translation);
 $isRtl = ct_locale_direction($pdo, $locale) === 'rtl';
+$sourceLocale = function_exists('content_default_locale') ? content_default_locale() : 'en';
+$localeStatuses = ct_theme_zone_translation_statuses($pdo, $itemId, $resource);
+$enabledLocales = array_slice(ct_enabled_locales($pdo), 0, 20);
 ?>
 <div class="ct-admin ct-editor<?= $isRtl ? ' ct-rtl-editor' : '' ?>" dir="<?= $isRtl ? 'rtl' : 'ltr' ?>">
   <div class="ct-header">
-    <div><h2><?= __('Theme Zone Translation') ?> - <?= h(strtoupper($locale)) ?></h2><p class="muted"><code>#<?= $itemId ?></code> <?= h($resource['theme_folder'] . ' / ' . $resource['zone_slug'] . ' / ' . $resource['position']) ?></p></div>
+    <div><h2><?= __('Zone Gadget Text') ?> - <?= h(strtoupper($locale)) ?></h2><p class="muted"><?= __('Source location:') ?> <?= h($resource['theme_folder'] . ' / ' . $resource['zone_slug'] . ' / ' . $resource['position']) ?> · <code>#<?= $itemId ?></code></p></div>
     <a class="btn" href="<?= h($returnUrl) ?>"><?= __('Back') ?></a>
   </div>
   <?php if (!empty($_GET['flash'])): ?><div class="ct-flash"><?= h((string)$_GET['flash']) ?></div><?php endif; ?>
   <?php if (!empty($_GET['error'])): ?><div class="ct-flash ct-flash-error"><?= h((string)$_GET['error']) ?></div><?php endif; ?>
   <?php if ($translation && !hash_equals((string)$resource['source_fingerprint'], (string)($translation['source_fingerprint'] ?? ''))): ?><div class="ct-flash ct-flash-warning"><?= __('The source text changed. Review every field before republishing.') ?></div><?php endif; ?>
+  <div class="ct-editor-language-nav"><div><strong><?= __('Frontend language versions') ?></strong><span><?= __('Edit source text in Themes → Customize. Edit what visitors see in each locale here.') ?></span></div><div class="ct-locale-chips"><span class="ct-locale-chip ct-locale-chip--source"><b><?= h(strtoupper($sourceLocale)) ?></b><small><?= __('Source') ?></small></span><?php foreach ($enabledLocales as $siblingLocale): ?><?php $siblingStatus = $localeStatuses[$siblingLocale] ?? 'empty'; $siblingUrl = $base . '/?' . http_build_query(['page' => 'admin/tools/content-translation/theme-zone-edit', 'item_id' => $itemId, 'locale' => $siblingLocale, 'return_to' => $returnUrl], '', '&', PHP_QUERY_RFC3986); ?><a class="ct-locale-chip ct-locale-chip--<?= h($siblingStatus) ?><?= $siblingLocale === $locale ? ' is-current' : '' ?>" href="<?= h($siblingUrl) ?>"><b><?= h(strtoupper($siblingLocale)) ?></b><small><?= h(ct_admin_translation_status_label($siblingStatus)) ?></small></a><?php endforeach; ?></div></div>
   <form method="post" action="<?= h($editorUrl) ?>" class="ct-panel ct-translation-panel">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
     <input type="hidden" name="item_id" value="<?= $itemId ?>">

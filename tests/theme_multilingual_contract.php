@@ -49,18 +49,22 @@ $check(str_contains($sources['frontend'], "add_filter('localized_string'")
     && str_contains($sources['frontend'], "\$context['theme_folder']")
     && str_contains($sources['frontend'], 'ct_theme_string_placeholders'),
     'theme strings resolve by physical owner and preserve format placeholders');
-$check(str_contains($sources['admin'], "add_action('theme_zone_item_editor_actions'")
+$check(str_contains($sources['admin'], "add_action('theme_zone_item_summary'")
+    && str_contains($sources['admin'], "add_action('theme_zone_item_editor_actions'")
+    && str_contains($sources['admin'], "(\$context['summary_available'] ?? false) === true")
     && str_contains($sources['zone_editor'], 'ct_user_is_site_owner')
     && str_contains($sources['zone_editor'], 'core.themes.manage'),
-    'generic Core action is adapted to a Site Owner plugin editor');
+    'persistent Core summary is adapted to a Site Owner plugin editor with legacy expanded fallback');
 $check(str_contains($sources['zone_editor'], 'source_fingerprint')
     && substr_count($sources['zone_editor'], 'translation_state') >= 4
     && str_contains($sources['helpers'], 'FOR UPDATE'),
     'Theme Zone mutation carries source and translation optimistic state');
 $check(str_contains($sources['string_editor'], 'adiwira_safe_return_to')
     && str_contains($sources['string_editor'], 'translation_state')
-    && str_contains($sources['string_list'], 'ct_theme_string_resources'),
-    'static-string workflow has safe navigation, discovery, and optimistic state');
+    && str_contains($sources['string_list'], 'ct_theme_string_resources')
+    && str_contains($sources['string_list'], 'name="return_to"')
+    && str_contains($sources['string_list'], "'return_to' => \$listUrl"),
+    'static-string workflow has safe layered navigation, discovery, and optimistic state');
 
 $literals = ct_theme_string_literals(<<<'PHP'
 <?php
@@ -78,7 +82,7 @@ $check($literals === [
     ['scope' => 'portfolio', 'source' => 'Scoped string'],
     ['scope' => 'default', 'source' => 'Global call'],
 ], 'token discovery accepts only complete literal calls with stable literal scopes');
-$check(ct_theme_string_decode_literal('"Unknown \\q"') === 'Unknown \\q'
+$check(ct_theme_string_decode_literal('"Unknown \\q"') === 'Unknown \q'
     && ct_theme_string_decode_literal('"Line\\nBreak"') === "Line\nBreak"
     && ct_theme_string_decode_literal('"Unicode \\u{263A}"') === 'Unicode ☺',
     'double-quoted discovery matches PHP escapes while preserving unknown escapes');

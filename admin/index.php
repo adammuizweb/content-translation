@@ -42,9 +42,9 @@ if ($section === 'content-translation'):
     <?php if ($canManageThemeTranslations): ?>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($themesUrl) ?>"><i>03</i><strong><?= __('Theme Partials') ?></strong><span><?= __('Translate database-backed theme content and its metadata.') ?></span><b><?= __('Manage theme partials') ?> →</b></a>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-sections') ?>"><i>04</i><strong><?= __('Theme Sections') ?></strong><span><?= __('Translate locked Theme Template compositions section by section.') ?></span><b><?= __('Manage theme sections') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-files') ?>"><i>05</i><strong><?= __('Theme Files') ?></strong><span><?= __('Translate declared text fields rendered by active theme files.') ?></span><b><?= __('Manage theme files') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/themes/customize') ?>"><i>06</i><strong><?= __('Theme Zones') ?></strong><span><?= __('Open Customize to translate declared gadget text while layout and behavior stay shared.') ?></span><b><?= __('Open Customize') ?> →</b></a>
-    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-strings') ?>"><i>07</i><strong><?= __('Theme UI Strings') ?></strong><span><?= __('Translate literal interface strings discovered from physical theme PHP source.') ?></span><b><?= __('Manage theme strings') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-files') ?>"><i>05</i><strong><?= __('Customizer Text') ?></strong><span><?= __('Translate text values entered in Themes → Customize when the matching theme file controls the frontend slot.') ?></span><b><?= __('Review Customizer text') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/themes/customize') ?>"><i>06</i><strong><?= __('Zone Gadget Text') ?></strong><span><?= __('Edit source text and its visible locale status together on each header, footer, or layout gadget.') ?></span><b><?= __('Open Customize') ?> →</b></a>
+    <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/tools/content-translation/theme-strings') ?>"><i>07</i><strong><?= __('PHP Interface Strings') ?></strong><span><?= __('Translate fixed labels and fallback messages written as localization calls in physical theme PHP.') ?></span><b><?= __('Review PHP strings') ?> →</b></a>
     <?php endif; ?>
     <a class="ct-hub-card ct-hub-card--primary" href="<?= h($base . '/?page=admin/shortcodes/index&tab=presets') ?>"><i>08</i><strong><?= __('Shortcode Presets') ?></strong><span><?= __('Open a source preset, then choose a language beside its heading settings. Query and layout configuration stay shared.') ?></span><b><?= __('Open Shortcode Presets') ?> →</b></a>
     <a class="ct-hub-card" href="<?= h($base . '/?page=admin/categories/index') ?>"><i>09</i><strong><?= __('Categories') ?></strong><span><?= __('Open a category, then choose its translation language in the editor.') ?></span><b><?= __('Open categories') ?> →</b></a>
@@ -60,46 +60,93 @@ if ($section === 'content-translation'):
 
 if ($section === 'theme-files'):
     if (!$canManageThemeTranslations) { http_response_code(404); return; }
-    $resources = ct_theme_file_resources($pdo);
-    $homepageResource = ct_homepage_theme_file_resource($pdo);
-    if ($homepageResource && !isset($resources[$homepageResource['id']])) {
-        $resources += ct_theme_file_resources($pdo, (string)$homepageResource['theme_folder']);
+    $themeFolder = is_scalar($_GET['theme_folder'] ?? null) ? trim((string)$_GET['theme_folder']) : '';
+    $slotFilter = is_scalar($_GET['slot_key'] ?? null) ? trim((string)$_GET['slot_key']) : '';
+    if (($themeFolder !== '' && (strlen($themeFolder) > 100 || preg_match('/\A[A-Za-z0-9_-][A-Za-z0-9._-]*\z/D', $themeFolder) !== 1))
+        || ($slotFilter !== '' && $themeFolder === '')
+        || ($slotFilter !== '' && (strlen($slotFilter) > 150 || preg_match('/\A[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\z/D', $slotFilter) !== 1))) {
+        http_response_code(404);
+        return;
+    }
+    $returnTo = function_exists('adiwira_safe_return_to')
+        ? adiwira_safe_return_to($_GET['return_to'] ?? null, $selfUrl)
+        : $selfUrl;
+    $returnPage = '';
+    $returnQuery = parse_url($returnTo, PHP_URL_QUERY);
+    if (is_string($returnQuery)) {
+        parse_str($returnQuery, $returnParams);
+        $returnPage = is_string($returnParams['page'] ?? null) ? trim($returnParams['page'], '/') : '';
+    }
+    $backLabel = match ($returnPage) {
+        'admin/themes/source' => __('Back to Source Editor'),
+        'admin/themes/assign' => __('Back to Theme Manager'),
+        'admin/themes/customize' => __('Back to Customize'),
+        default => __('Back to Content Translation'),
+    };
+    if ($themeFolder !== '') {
+        $resources = ct_theme_file_resources($pdo, $themeFolder);
+    } else {
+        $resources = ct_theme_file_resources($pdo);
+        $homepageResource = ct_homepage_theme_file_resource($pdo);
+        if ($homepageResource && !isset($resources[$homepageResource['id']])) {
+            $resources += ct_theme_file_resources($pdo, (string)$homepageResource['theme_folder']);
+        }
+    }
+    if ($slotFilter !== '') {
+        $resourceId = ct_theme_file_resource_id($themeFolder, $slotFilter);
+        $resources = isset($resources[$resourceId]) ? [$resourceId => $resources[$resourceId]] : [];
     }
     $statuses = ct_theme_file_translation_statuses($pdo, $resources);
+    $runtimeStates = [];
+    foreach ($resources as $resourceId => $resource) $runtimeStates[$resourceId] = ct_theme_file_runtime_state($pdo, $resource);
+    $listQuery = ['page' => 'admin/tools/content-translation/theme-files'];
+    if ($themeFolder !== '') $listQuery['theme_folder'] = $themeFolder;
+    if ($slotFilter !== '') $listQuery['slot_key'] = $slotFilter;
+    if ($returnTo !== $selfUrl) $listQuery['return_to'] = $returnTo;
+    $listUrl = $base . '/?' . http_build_query($listQuery, '', '&', PHP_QUERY_RFC3986);
 ?>
 <div class="ct-admin">
   <div class="ct-header">
     <div>
-      <h2><?= __('Theme Files') ?></h2>
-      <p class="muted"><?= __('File-backed resources declared by the active theme and the theme assigned to the homepage. A published locale must contain every declared translatable field.') ?></p>
+      <h2><?= __('Customizer Text') ?></h2>
+      <p class="muted"><?= __('These are text values entered in Themes → Customize. They affect visitors only while the matching physical theme file controls that frontend slot.') ?></p>
     </div>
-    <a class="btn" href="<?= h($selfUrl) ?>"><?= __('Back') ?></a>
+    <a class="btn ct-back-link" href="<?= h($returnTo) ?>"><?= svg_ico('arrow-left') ?><span><?= h($backLabel) ?></span></a>
   </div>
   <?php if (!empty($_GET['flash'])): ?><div class="ct-flash"><?= h((string)$_GET['flash']) ?></div><?php endif; ?>
   <?php if (empty($locales)): ?>
     <div class="ct-flash ct-flash-warning"><?= __('No translation locales enabled.') ?> <a href="<?= h($settingsUrl) ?>"><?= __('Configure locales') ?></a></div>
   <?php endif; ?>
+  <div class="ct-workflow-note"><strong><?= __('Choose the workflow that owns the visible text.') ?></strong><span><?= __('Theme Template assignments use Theme Sections. Header and footer gadget content uses the locale badges in Themes → Customize. Fixed PHP labels use PHP Interface Strings.') ?></span></div>
   <table class="ct-table">
-    <thead><tr><th><?= __('Resource') ?></th><th><?= __('Slot') ?></th><th><?= __('Fields') ?></th><th class="ct-translations-col"><?= __('Translations') ?></th></tr></thead>
+    <thead><tr><th><?= __('Resource') ?></th><th><?= __('Frontend use') ?></th><th><?= __('Fields') ?></th><th class="ct-translations-col"><?= __('Languages') ?></th></tr></thead>
     <tbody>
       <?php if (empty($resources)): ?>
         <tr><td colspan="4" class="muted"><?= __('The active theme does not declare any file-backed translatable resources.') ?></td></tr>
       <?php endif; ?>
       <?php foreach ($resources as $resource): ?>
-        <tr>
-          <td><strong><?= h((string)$resource['label']) ?></strong><br><small class="muted"><?= h((string)$resource['theme_folder']) ?></small></td>
-          <td><code><?= h((string)$resource['slot_key']) ?></code></td>
+        <?php $runtime = $runtimeStates[$resource['id']] ?? ['active' => false, 'type' => 'unavailable', 'label' => '', 'post_id' => null]; ?>
+        <tr class="<?= $runtime['active'] ? '' : 'ct-resource-inactive' ?>">
+          <td><strong><?= h((string)$resource['label']) ?></strong><br><small class="muted"><?= h((string)$resource['theme_folder']) ?> · <code><?= h((string)$resource['slot_key']) ?></code></small></td>
+          <td>
+            <?php if ($runtime['active']): ?>
+              <span class="ct-runtime-state ct-runtime-state--active"><?= __('Used on frontend') ?></span>
+            <?php elseif ($runtime['type'] === 'theme_template'): ?>
+              <span class="ct-runtime-state ct-runtime-state--inactive"><?= __('Not used on frontend') ?></span><small class="muted"><?= __('This slot is rendered by Theme Template:') ?> <?= h((string)$runtime['label']) ?></small>
+            <?php elseif ($runtime['type'] === 'theme_file' && $runtime['label'] !== ''): ?>
+              <span class="ct-runtime-state ct-runtime-state--inactive"><?= __('Not used on frontend') ?></span><small class="muted"><?= __('This slot is rendered by another physical theme:') ?> <?= h((string)$runtime['label']) ?></small>
+            <?php else: ?>
+              <span class="ct-runtime-state ct-runtime-state--inactive"><?= __('Not used on frontend') ?></span><small class="muted"><?= __('No current frontend template resolves this slot.') ?></small>
+            <?php endif; ?>
+          </td>
           <td><?= h(implode(', ', array_map(fn(array $field): string => (string)$field['label'], $resource['fields']))) ?></td>
           <td class="ct-translations-col">
-            <select class="ct-translation-select" aria-label="<?= h(__('Translations')) ?>" onchange="if(this.value) window.location.href=this.value">
-              <option value=""><?= __('Choose language…') ?></option>
-              <?php foreach ($locales as $locale): ?>
-                <?php $status = $statuses[$resource['id']][$locale] ?? null; ?>
-                <?php $label = strtoupper($locale) . ' — ' . ($status === 'draft' ? __('Draft') : ($status === 'published' ? __('Published') : ($status === 'incomplete' ? __('Incomplete') : __('Add')))); ?>
-                <?php $url = $themeFileEditUrl . '&theme_folder=' . urlencode((string)$resource['theme_folder']) . '&slot_key=' . urlencode((string)$resource['slot_key']) . '&locale=' . urlencode($locale); ?>
-                <option value="<?= h($url) ?>"><?= h($label) ?></option>
-              <?php endforeach; ?>
-            </select>
+            <div class="ct-locale-chips"><span class="ct-locale-chip ct-locale-chip--source"><b><?= h(strtoupper($defaultLocale)) ?></b><small><?= __('Source') ?></small></span>
+            <?php foreach ($locales as $locale): ?>
+              <?php $status = $statuses[$resource['id']][$locale] ?? 'empty'; ?>
+              <?php $url = $themeFileEditUrl . '&' . http_build_query(['theme_folder' => (string)$resource['theme_folder'], 'slot_key' => (string)$resource['slot_key'], 'locale' => $locale, 'return_to' => $listUrl], '', '&', PHP_QUERY_RFC3986); ?>
+              <a class="ct-locale-chip ct-locale-chip--<?= h($status) ?>" href="<?= h($url) ?>"><b><?= h(strtoupper($locale)) ?></b><small><?= h(ct_admin_translation_status_label($status)) ?></small></a>
+            <?php endforeach; ?></div>
           </td>
         </tr>
       <?php endforeach; ?>

@@ -1151,14 +1151,14 @@ if (!function_exists('ct_ensure_schema')) {
     }
 
     /**
-     * Discover translatable file resources declared by the active theme.
+     * Discover translatable file resources declared by a registered physical theme.
      * Sections that target the same slot form one atomic translation resource.
      */
     function ct_theme_file_resources(PDO $pdo, ?string $themeFolder = null): array {
         if (!function_exists('get_active_theme_folder') || !function_exists('theme_customizer_fields')) return [];
 
         $folder = trim((string)($themeFolder ?? get_active_theme_folder($pdo)));
-        if ($folder === '' || strlen($folder) > 100) return [];
+        if ($folder === '' || ct_theme_root($pdo, $folder) === null) return [];
 
         $resources = [];
         foreach (theme_customizer_fields($folder) as $sectionKey => $section) {
@@ -1215,6 +1215,39 @@ if (!function_exists('ct_ensure_schema')) {
         $id = ct_theme_file_resource_id($themeFolder, $slotKey);
         $resources = ct_theme_file_resources($pdo, $themeFolder);
         return $resources[$id] ?? null;
+    }
+
+    function ct_theme_file_runtime_state(PDO $pdo, array $resource): array {
+        $folder = is_string($resource['theme_folder'] ?? null) ? $resource['theme_folder'] : '';
+        $slot = is_string($resource['slot_key'] ?? null) ? $resource['slot_key'] : '';
+        $state = ['active' => false, 'type' => 'unavailable', 'label' => '', 'post_id' => null];
+        if ($folder === '' || $slot === '' || !function_exists('resolve_template')) return $state;
+        try {
+            $resolved = resolve_template($pdo, $slot);
+        } catch (Throwable $error) {
+            error_log('[content-translation] Theme File runtime resolution failed: ' . $error->getMessage());
+            return $state;
+        }
+        $type = (string)($resolved['type'] ?? 'unavailable');
+        if ($type === 'theme_file') {
+            $runtimeFolder = (string)($resolved['theme_folder'] ?? '');
+            return [
+                'active' => $runtimeFolder !== '' && hash_equals($folder, $runtimeFolder),
+                'type' => 'theme_file',
+                'label' => $runtimeFolder,
+                'post_id' => null,
+            ];
+        }
+        if ($type === 'custom_post' && is_array($resolved['post'] ?? null)) {
+            $post = $resolved['post'];
+            return [
+                'active' => false,
+                'type' => 'theme_template',
+                'label' => (string)($post['title'] ?? ''),
+                'post_id' => (int)($post['id'] ?? 0) ?: null,
+            ];
+        }
+        return $state;
     }
 
     function ct_homepage_theme_file_resource(PDO $pdo): ?array {
@@ -1447,6 +1480,40 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
+    function ct_theme_zone_resources(PDO $pdo, string $themeFolder, ?string $zoneSlug = null, bool $activeOnly = true, int $limit = 128): array {
+        $themeFolder = trim($themeFolder);
+        $zoneSlug = $zoneSlug === null ? null : trim($zoneSlug);
+        if ($themeFolder === '' || strlen($themeFolder) > 100
+            || preg_match('/\A[A-Za-z0-9_-][A-Za-z0-9._-]*\z/D', $themeFolder) !== 1
+            || ($zoneSlug !== null && ($zoneSlug === '' || strlen($zoneSlug) > 150
+                || preg_match('/\A[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\z/D', $zoneSlug) !== 1))) return [];
+        $limit = max(1, min(128, $limit));
+        try {
+            $where = ['theme_folder = ?'];
+            $params = [$themeFolder];
+            if ($zoneSlug !== null) {
+                $where[] = 'zone_slug = ?';
+                $params[] = $zoneSlug;
+            }
+            if ($activeOnly) $where[] = 'active = 1';
+            $stmt = $pdo->prepare('SELECT * FROM theme_zone_items WHERE ' . implode(' AND ', $where)
+                . ' ORDER BY zone_slug ASC, position ASC, ordering ASC, id ASC LIMIT ' . $limit);
+            $stmt->execute($params);
+            $resources = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $resource = ct_theme_zone_resource_from_row($row);
+                if (!$resource) continue;
+                $resource['active'] = !empty($row['active']);
+                $resource['ordering'] = (int)($row['ordering'] ?? 0);
+                $resources[] = $resource;
+            }
+            return $resources;
+        } catch (Throwable $error) {
+            error_log('[content-translation] Theme Zone resources error: ' . $error->getMessage());
+            return [];
+        }
+    }
+
     function ct_theme_zone_translation_state(?array $translation): string {
         return hash('sha256', json_encode($translation ? [
             'id' => (int)($translation['id'] ?? 0),
@@ -1482,10 +1549,10 @@ if (!function_exists('ct_ensure_schema')) {
         return true;
     }
 
-    function ct_theme_zone_translation_statuses(PDO $pdo, int $itemId): array {
+    function ct_theme_zone_translation_statuses(PDO $pdo, int $itemId, ?array $resource = null): array {
         ct_ensure_schema($pdo);
-        $resource = ct_theme_zone_resource($pdo, $itemId);
-        if (!$resource) return [];
+        $resource ??= ct_theme_zone_resource($pdo, $itemId);
+        if (!$resource || (int)($resource['id'] ?? 0) !== $itemId) return [];
         $stmt = $pdo->prepare('SELECT * FROM ct_theme_zone_item_translations WHERE theme_zone_item_id = ?');
         $stmt->execute([$itemId]);
         $statuses = [];
@@ -1494,6 +1561,30 @@ if (!function_exists('ct_ensure_schema')) {
             $current = hash_equals((string)$resource['source_fingerprint'], (string)($row['source_fingerprint'] ?? ''));
             $complete = $values !== null && ct_theme_zone_translation_is_complete(['values' => $values, 'values_valid' => true], $resource);
             $statuses[(string)$row['locale']] = !$current ? 'stale' : (!$complete ? 'incomplete' : (string)$row['status']);
+        }
+        return $statuses;
+    }
+
+    function ct_theme_zone_translation_statuses_for_resources(PDO $pdo, array $resources): array {
+        $indexed = [];
+        foreach (array_slice($resources, 0, 128) as $resource) {
+            $itemId = is_array($resource) ? (int)($resource['id'] ?? 0) : 0;
+            if ($itemId > 0) $indexed[$itemId] = $resource;
+        }
+        if ($indexed === []) return [];
+        ct_ensure_schema($pdo);
+        $stmt = $pdo->prepare('SELECT * FROM ct_theme_zone_item_translations WHERE theme_zone_item_id IN ('
+            . implode(',', array_fill(0, count($indexed), '?')) . ')');
+        $stmt->execute(array_keys($indexed));
+        $statuses = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $itemId = (int)($row['theme_zone_item_id'] ?? 0);
+            $resource = $indexed[$itemId] ?? null;
+            if (!is_array($resource)) continue;
+            $values = ct_theme_file_decode_values((string)$row['values_json']);
+            $current = hash_equals((string)$resource['source_fingerprint'], (string)($row['source_fingerprint'] ?? ''));
+            $complete = $values !== null && ct_theme_zone_translation_is_complete(['values' => $values, 'values_valid' => true], $resource);
+            $statuses[$itemId][(string)$row['locale']] = !$current ? 'stale' : (!$complete ? 'incomplete' : (string)$row['status']);
         }
         return $statuses;
     }

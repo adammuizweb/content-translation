@@ -10,7 +10,7 @@ $check = static function (bool $ok, string $message) use (&$failures): void {
 
 $manifest = json_decode((string)file_get_contents($root . '/plugin.json'), true, 32, JSON_THROW_ON_ERROR);
 $pages = $manifest['admin']['pages'] ?? [];
-$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.155', 'manifest requires the Core content-list Edit visibility contract');
+$check(($manifest['requires']['jyavani'] ?? '') === '>=2.3.164', 'manifest requires the Core content-list and theme-source action contracts');
 $check(($manifest['permissions'][0]['key'] ?? '') === 'plugin.content-translation.workspace.access', 'manifest owns one workspace permission');
 $check(count($pages) === 21, 'manifest declares all twenty-one admin routes');
 $check(array_filter($pages, static fn(array $page): bool => ($page['permission'] ?? '') !== 'plugin.content-translation.workspace.access') === [], 'every admin route uses workspace permission');
@@ -31,7 +31,10 @@ $check(str_contains($save, "['article', 'page', 'theme']") && str_contains($save
 $check(str_contains($delete, 'ct_current_user_id()') && str_contains($helpers, "current['status']"), 'generic delete protects published translations');
 $check(str_contains($helpers, 'ct_user_locale_edit_grants') && str_contains($helpers, 'ct_role_locale_edit_grants') && str_contains($helpers, 'updated_by = VALUES(updated_by)'), 'plugin grants and translation mutation attribution are enforced');
 $check(str_contains($shortcodeSave, 'core.shortcodes.update') && str_contains($shortcodeSave, 'core.shortcodes.delete'), 'preset mutations split scoped update and global cleanup');
-$check(str_contains($adminHooks, 'core.settings.manage') && str_contains($adminHooks, 'core.categories.update') && str_contains($adminHooks, 'core.profile.manage'), 'Core-integrated hooks require their matching Core permissions');
+$check(str_contains($adminHooks, 'core.settings.manage') && str_contains($adminHooks, 'core.categories.update')
+    && str_contains($adminHooks, 'core.profile.manage') && str_contains($adminHooks, "ct_user_can_integration(\$pdo, 'core.themes.manage'")
+    && str_contains($adminHooks, 'ct_user_is_site_owner($pdo, $actorId)'),
+    'Core-integrated hooks require their matching Core permissions and owner boundaries');
 $check(str_contains($export, '$requiredPermissions') && str_contains($export, 'core.users.read') && str_contains($export, 'core.themes.manage'), 'whole-site export requires the broad read/manage matrix');
 
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));

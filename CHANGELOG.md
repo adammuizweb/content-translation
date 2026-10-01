@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+## 1.20.0 - 2026-10-01
+
+- Add independent owner-labelled Theme Manager and PHP Source Editor actions for Theme Files and Theme UI Strings.
+- Add contextual Theme File folder/slot navigation with validated return targets.
+- Add a source-language guide and persistent locale status links to Core Customize, including direct Theme Template navigation and visible Theme Zone gadget translations.
+- Rename implementation-oriented theme workflows in the UI to Customizer Text, Zone Gadget Text, and PHP Interface Strings, and mark stored resources that do not control the current frontend assignment.
+- Add Source Editor runtime ownership panels with direct locale status links for Theme Templates, declared Customizer text, and active Theme Zone gadgets.
+- Require Jyavani Core 2.3.164 for the installed-theme source action contract; Theme Builder remains optional.
+
 ## 1.19.1 - 2026-09-25
 
 - Require Jyavani Core 2.3.155 for canonical Edit-action visibility on alternate-language content lists.
