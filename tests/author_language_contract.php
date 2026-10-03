@@ -17,6 +17,7 @@ $index = (string)file_get_contents($root . '/admin/index.php');
 $save = (string)file_get_contents($root . '/admin/api/save.php');
 $settings = (string)file_get_contents($root . '/admin/settings.php');
 $plugin = (string)file_get_contents($root . '/plugin.php');
+$styles = (string)file_get_contents($root . '/assets/css/translate.css');
 $migration = (string)file_get_contents($root . '/migrations/0002-migrate-authored-posts.php');
 $manifest = json_decode((string)file_get_contents($root . '/plugin.json'), true, 32, JSON_THROW_ON_ERROR);
 
@@ -34,9 +35,14 @@ function settings_set(PDO $pdo, string $key, mixed $value, int $autoload = 1): b
     return true;
 }
 function content_default_locale(): string { return 'en'; }
+function content_locale_presets(): array { return ['en' => 'English', 'id' => 'Indonesian', 'de' => 'German']; }
 function get_supported_locales(): array { return ['en', 'id', 'de']; }
 function __(string $text): string { return $text; }
+function svg_ico(string $name): string { return '<svg class="lucide-icon" data-icon="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '"></svg>'; }
 function user_can(PDO $pdo, int $userId, string $permission, array $context = []): bool { return $userId > 0; }
+function authorization_actor(PDO $pdo, int $userId): ?array {
+    return $userId > 0 ? ['is_site_owner' => (bool)($GLOBALS['authorLanguageSiteOwner'] ?? false)] : null;
+}
 function add_action(string $hook, callable $callback, int $priority = 10, int $acceptedArgs = 1): void {
     $GLOBALS['authorLanguageActions'][$hook][$priority][] = $callback;
 }
@@ -71,7 +77,7 @@ $pdo->exec("INSERT INTO category_translations VALUES
     (4, 'de', 'Kind', 'kind', '', 'published')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.20.1', 'plugin release is 1.20.1');
+$check(($manifest['version'] ?? '') === '1.20.2', 'plugin release is 1.20.2');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -240,10 +246,20 @@ $listFilterOutput = (string)ob_get_clean();
 $check(str_contains($listFilterOutput, 'name="content_locale"')
     && str_contains($listFilterOutput, 'value="de" selected')
     && str_contains($listFilterOutput, 'form="')
+    && str_contains($listFilterOutput, 'class="ct-content-list-language"')
+    && str_contains($listFilterOutput, 'data-icon="globe"')
+    && str_contains($listFilterOutput, 'ct-content-list-language-code" aria-hidden="true">DE</span>')
+    && str_contains($listFilterOutput, '>German (DE)</option>')
     && str_contains($listFilterOutput, 'fetch(url.href')
     && str_contains($listFilterOutput, 'document.write(html)')
-    && str_contains($listFilterOutput, 'searchParams.delete("p")'),
-    'content lists render an AJAX language control without changing writing preference');
+    && str_contains($listFilterOutput, 'searchParams.delete("p")')
+    && substr_count($listFilterOutput, 'id="ct-content-list-locale"') === 1,
+    'content lists render a compact accessible AJAX language control without changing writing preference');
+$check(str_contains($styles, 'width: 4rem;')
+    && str_contains($styles, 'opacity: 0;')
+    && str_contains($styles, '@media (max-width: 360px)')
+    && str_contains($styles, 'width: 2.9rem;'),
+    'content list language control remains compact across desktop and narrow mobile layouts');
 $_GET = ['page' => 'admin/categories/index', 'content_locale' => 'de'];
 ob_start();
 if (is_callable($listFilter)) $listFilter([
@@ -254,7 +270,38 @@ if (is_callable($listFilter)) $listFilter([
 $categoryFilterOutput = (string)ob_get_clean();
 $check(str_contains($categoryFilterOutput, 'value="de" selected')
     && str_contains($categoryFilterOutput, 'form="categories-list-filter"'),
-    'Category list renders the selected locale control in its Core filter form');
+    'Category list renders the selected locale control associated with its Core GET filter form');
+$_GET = ['page' => 'admin/pages/index', 'content_locale' => 'de'];
+ob_start();
+if (is_callable($listFilter)) $listFilter([
+    'schema' => 1,
+    'type' => 'page',
+    'filter_form_id' => 'pages-list-filter',
+], $pdo);
+$pageFilterOutput = (string)ob_get_clean();
+$check(str_contains($pageFilterOutput, 'form="pages-list-filter"')
+    && substr_count($pageFilterOutput, 'id="ct-content-list-locale"') === 1,
+    'Page list renders one compact selector associated with its Core GET filter form');
+$_GET = ['page' => 'admin/themes/index', 'content_locale' => 'de'];
+ob_start();
+if (is_callable($listFilter)) $listFilter([
+    'schema' => 1,
+    'type' => 'theme',
+    'filter_form_id' => 'themes-list-filter',
+], $pdo);
+$check(ob_get_clean() === '', 'Theme Content list withholds its selector outside the Site Owner boundary');
+$GLOBALS['authorLanguageSiteOwner'] = true;
+ob_start();
+if (is_callable($listFilter)) $listFilter([
+    'schema' => 1,
+    'type' => 'theme',
+    'filter_form_id' => 'themes-list-filter',
+], $pdo);
+$themeFilterOutput = (string)ob_get_clean();
+$check(str_contains($themeFilterOutput, 'form="themes-list-filter"')
+    && substr_count($themeFilterOutput, 'id="ct-content-list-locale"') === 1,
+    'Site Owners receive one compact Theme Content selector associated with the Core GET filter form');
+$GLOBALS['authorLanguageSiteOwner'] = false;
 ob_start();
 if (is_callable($listFilter)) $listFilter([
     'schema' => 1,

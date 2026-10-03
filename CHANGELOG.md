@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.20.2 - 2026-10-03
+
+- Keep the list-language selector compact in Core list headers while retaining native form association, AJAX navigation, and narrow-screen access.
+
 ## 1.20.1 - 2026-10-01
 
 - Preserve freshly rendered Preset and widget output in dynamic Theme Sections while still applying translated semantic fields.

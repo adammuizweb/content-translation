@@ -801,6 +801,11 @@ add_action('admin_content_list_filters', function ($context, $pdo): void {
         && preg_match('/\A[a-z][a-z0-9_-]{0,63}\z/', $context['filter_form_id']) === 1
         ? $context['filter_form_id']
         : '';
+    $selectedLabel = isset($presets[$selected]) ? __((string)$presets[$selected]) . ' (' . strtoupper($selected) . ')' : strtoupper($selected);
+    echo '<div class="ct-content-list-language" title="' . htmlspecialchars(__('Language') . ': ' . $selectedLabel, ENT_QUOTES, 'UTF-8') . '">';
+    echo svg_ico('globe');
+    echo '<span class="ct-content-list-language-code" aria-hidden="true">' . htmlspecialchars(strtoupper($selected), ENT_QUOTES, 'UTF-8') . '</span>';
+    echo '<span class="ct-content-list-language-chevron" aria-hidden="true">' . svg_ico('chevron-down') . '</span>';
     echo '<label class="sr-only" for="ct-content-list-locale">' . htmlspecialchars(__('Language'), ENT_QUOTES, 'UTF-8') . '</label>';
     echo '<select class="inp ct-content-list-locale" id="ct-content-list-locale" name="content_locale" data-ct-content-list-locale aria-label="' . htmlspecialchars(__('Language'), ENT_QUOTES, 'UTF-8') . '"'
         . ($formId !== '' ? ' form="' . htmlspecialchars($formId, ENT_QUOTES, 'UTF-8') . '"' : '') . '>';
@@ -809,6 +814,7 @@ add_action('admin_content_list_filters', function ($context, $pdo): void {
         echo '<option value="' . htmlspecialchars($locale, ENT_QUOTES, 'UTF-8') . '"' . ($locale === $selected ? ' selected' : '') . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
     }
     echo '</select>';
+    echo '</div>';
     echo '<script>(function(){var select=document.querySelector("[data-ct-content-list-locale]");if(!select||select.dataset.ctAjaxReady)return;select.dataset.ctAjaxReady="1";select.addEventListener("change",function(){var url=new URL(window.location.href);url.searchParams.set("content_locale",select.value);url.searchParams.delete("p");select.disabled=true;select.setAttribute("aria-busy","true");fetch(url.href,{method:"GET",credentials:"same-origin",cache:"no-store",redirect:"error",headers:{Accept:"text/html"}}).then(function(response){if(!response.ok||!(response.headers.get("content-type")||"").toLowerCase().includes("text/html"))throw new Error("invalid response");return response.text()}).then(function(html){window.history.pushState({contentLocale:select.value},"",url.href);document.open();document.write(html);document.close()}).catch(function(){window.location.assign(url.href)})})})()</script>';
 }, 10, 2);
 
