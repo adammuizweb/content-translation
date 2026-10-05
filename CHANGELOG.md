@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.20.3 - 2026-10-05
+
+- Allow authorized Core authors to update ordinary articles and pages that do not have a localized-content workflow.
+
 ## 1.20.2 - 2026-10-03
 
 - Keep the list-language selector compact in Core list headers while retaining native form association, AJAX navigation, and narrow-screen access.

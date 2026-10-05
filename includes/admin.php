@@ -537,10 +537,9 @@ if (!function_exists('ct_create_authored_post_workflow')) {
 
     function ct_update_authored_post_source(int $postId, PDO $pdo, array $input, string $type): void {
         $workflow = ct_post_workflow($pdo, $postId);
+        if (!$workflow) return;
         $actorId = ct_current_user_id();
-        $sourceLocale = $workflow
-            ? (string)$workflow['source_locale']
-            : (function_exists('content_default_locale') ? content_default_locale() : 'en');
+        $sourceLocale = (string)$workflow['source_locale'];
         if (!ct_user_has_locale_edit_grant($pdo, $actorId, $sourceLocale, $pdo->inTransaction())) {
             throw new RuntimeException('Only the canonical-language editor may update this source.');
         }
@@ -549,7 +548,6 @@ if (!function_exists('ct_create_authored_post_workflow')) {
         if ($workflow && ($previousOwner <= 0 || $nextOwner !== $previousOwner)) {
             throw new RuntimeException('Ownership cannot change while a localized workflow is active.');
         }
-        if (!$workflow) return;
         $sourceStatus = (string)($input['status'] ?? 'draft');
         if (!ct_update_post_source_status($pdo, $postId, $sourceStatus)) {
             throw new RuntimeException('Canonical source status could not be updated.');

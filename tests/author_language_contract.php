@@ -77,7 +77,7 @@ $pdo->exec("INSERT INTO category_translations VALUES
     (4, 'de', 'Kind', 'kind', '', 'published')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.20.2', 'plugin release is 1.20.2');
+$check(($manifest['version'] ?? '') === '1.20.3', 'plugin release is 1.20.3');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -112,6 +112,17 @@ $check(str_contains($admin, "add_action('admin_post_after_add'")
     && str_contains($admin, 'RELEASE_LOCK')
     && str_contains($admin, 'GET_LOCK')
     && !str_contains($admin, "add_action('admin_post_after_edit'"), 'post-commit handling only releases the authored slug lock');
+$updateSourceStart = strpos($admin, 'function ct_update_authored_post_source');
+$updateSourceEnd = $updateSourceStart === false ? false : strpos($admin, "\n}\n\nadd_action('admin_post_before_add_commit'", $updateSourceStart);
+$updateSource = $updateSourceStart === false || $updateSourceEnd === false
+    ? ''
+    : substr($admin, $updateSourceStart, $updateSourceEnd - $updateSourceStart);
+$workflowLookup = strpos($updateSource, '$workflow = ct_post_workflow($pdo, $postId);');
+$noWorkflowReturn = strpos($updateSource, 'if (!$workflow) return;');
+$sourceGrant = strpos($updateSource, 'ct_user_has_locale_edit_grant($pdo, $actorId, $sourceLocale');
+$check($workflowLookup !== false && $noWorkflowReturn !== false && $sourceGrant !== false
+    && $workflowLookup < $noWorkflowReturn && $noWorkflowReturn < $sourceGrant,
+    'ordinary Core content bypasses translation-only source locale enforcement');
 $check(str_contains($admin, "add_filter('site_settings_validation_errors'")
     && str_contains($admin, 'Content default language cannot change'), 'active workflows lock the canonical content language');
 $check(str_contains($admin, "add_filter('post_list_join'")
