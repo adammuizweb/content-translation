@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.21.0 - 2026-10-23
+
+- Add a bounded runtime adapter contract for multilingual resources owned by other plugins, including localized routing, canonical and `hreflang` metadata, and language-switcher integration.
+- Expose a workspace and locale-grant helper for consumers while leaving resource authorization, persistence, editing, publication, and sitemap ownership with those consumers.
+- Preserve adapter-owned public trailing slashes and bounded query state across canonical, `hreflang`, and language-switcher URLs while rejecting canonical duplicate paths and exposing stable extension capabilities.
+- Leave built-in metadata and switcher handling eligible when adapter discovery or alternates fail validation, and support optional locking locale-grant checks for external resource editors.
+
 ## 1.20.3 - 2026-10-05
 
 - Allow authorized Core authors to update ordinary articles and pages that do not have a localized-content workflow.

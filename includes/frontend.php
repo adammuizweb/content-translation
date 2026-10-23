@@ -155,6 +155,18 @@ add_filter('router_path', function ($path) {
         return $categoryMatch['base'] . '/' . $resolved['source_path'] . $paginationSuffix;
     }
 
+    if (function_exists('ct_resource_adapter_resolve')) {
+        $resourceContext = ct_resource_adapter_resolve($pdo, $first, $rest);
+        if ($resourceContext !== null) {
+            if (empty($resourceContext['valid']) || empty($resourceContext['available'])) ct_render_not_found();
+            if (function_exists('set_locale')) set_locale($first);
+            $GLOBALS['ct_request_locale'] = $first;
+            $GLOBALS['ct_resource_adapter_context_checked'] = true;
+            $GLOBALS['ct_resource_adapter_context'] = $resourceContext;
+            return (string)$resourceContext['route_path'];
+        }
+    }
+
     // Canonical and alias routes are valid only when the routed post has a
     // reviewed translation for the requested locale.
     if (function_exists('content_route_resolve')) {
@@ -753,6 +765,15 @@ add_filter('document_meta_description', function ($description, $post, $pdo) {
 add_filter('canonical_url', function ($url) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
     $pdo = $GLOBALS['pdo'] ?? null;
+    if ($pdo instanceof PDO && function_exists('ct_resource_adapter_metadata_context')) {
+        $resourceContext = ct_resource_adapter_metadata_context($pdo);
+        if (is_array($resourceContext)) {
+            foreach ((array)($resourceContext['alternate_rows'] ?? []) as $row) {
+                if (!empty($row['active'])) return ct_base_url() . ct_resource_adapter_compose_path($row['path'], $row['query'] ?? null);
+            }
+            return $url;
+        }
+    }
     if (!empty($GLOBALS['ct_theme_file_homepage']) && $pdo instanceof PDO && $locale) {
         return ct_base_url() . ct_homepage_url($locale);
     }
@@ -791,6 +812,28 @@ add_filter('canonical_url', function ($url) {
 add_action('jy_head', function () {
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) return;
+
+    if (function_exists('ct_resource_adapter_metadata_context')) {
+        $resourceContext = ct_resource_adapter_metadata_context($pdo);
+        if (is_array($resourceContext)) {
+            $rows = (array)($resourceContext['alternate_rows'] ?? []);
+            if (count($rows) < 2) return;
+            $base = ct_base_url();
+            foreach ($rows as $row) {
+                echo '<link rel="alternate" hreflang="' . htmlspecialchars($row['locale'], ENT_QUOTES) . '" href="' . htmlspecialchars($base . ct_resource_adapter_compose_path($row['path'], $row['query'] ?? null), ENT_QUOTES) . '">' . "\n";
+            }
+            $defaultLocale = content_default_locale();
+            $defaultRow = $rows[0];
+            foreach ($rows as $row) {
+                if ($row['locale'] === $defaultLocale) {
+                    $defaultRow = $row;
+                    break;
+                }
+            }
+            echo '<link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($base . ct_resource_adapter_compose_path($defaultRow['path'], $defaultRow['query'] ?? null), ENT_QUOTES) . '">' . "\n";
+            return;
+        }
+    }
 
     $collection = ct_collection_request_context($pdo);
     if ($collection !== null) {
@@ -887,6 +930,16 @@ add_action('jy_head', function () {
 // ─── Language switcher — shared renderer ───
 if (!function_exists('ct_switcher_html')) {
     function ct_switcher_html(PDO $pdo, string $title = '', string $style = 'pills'): string {
+        if (function_exists('ct_resource_adapter_metadata_context')) {
+            $resourceContext = ct_resource_adapter_metadata_context($pdo);
+            if (is_array($resourceContext)) {
+                $items = [];
+                foreach ((array)($resourceContext['alternate_rows'] ?? []) as $row) {
+                    $items[] = ['locale' => $row['locale'], 'url' => ct_resource_adapter_compose_path($row['path'], $row['query'] ?? null), 'active' => $row['active']];
+                }
+                return ct_render_switcher_items($items, $title, $style);
+            }
+        }
         $current = $GLOBALS['ct_current_post'] ?? null;
         $currentCategory = $GLOBALS['ct_current_category'] ?? null;
         $currentAuthor = $GLOBALS['ct_current_author'] ?? null;

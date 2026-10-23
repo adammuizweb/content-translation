@@ -8,6 +8,7 @@ $__ct_dir = __DIR__;
 require_once $__ct_dir . '/includes/helpers.php';
 require_once $__ct_dir . '/includes/media.php';
 require_once $__ct_dir . '/includes/shortcode-presets.php';
+require_once $__ct_dir . '/includes/resource-adapters.php';
 require_once $__ct_dir . '/includes/frontend.php';
 require_once $__ct_dir . '/includes/theme-section-packages.php';
 require_once $__ct_dir . '/includes/sidebar-lifecycle.php';

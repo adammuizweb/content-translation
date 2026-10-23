@@ -33,6 +33,8 @@ other theme-authoring plugins.
 - Publish locale-prefixed routes, canonical URLs, `hreflang` links, localized
   search results, collection pages, and selected-locale sitemaps.
 - Render a context-aware language switcher as pills or a select field.
+- Integrate multilingual resources owned by other plugins through a bounded
+  runtime adapter contract, without taking over their storage or editors.
 - Assign locale editing grants and default writing languages by user or role.
 - Switch the displayed language on Core content/category lists and compatible
   mixed-content plugin lists without changing the user's writing language.
@@ -108,6 +110,7 @@ duplicate the source file.
 - [Theme translation](docs/theme-translation.md)
 - [Localized media](docs/localized-media.md)
 - [Shortcode Preset translation](docs/shortcode-preset-translation.md)
+- [External resource adapters](docs/resource-adapters.md)
 
 ## Authorization and Data Safety
 
