@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.21.2 - 2026-11-11
+
+- Support translated Theme Section packages as the content source for file-owned homepages.
+- Keep manifest-declared live homepage sections on their theme renderer while translating the remaining reviewed sections.
+
 ## 1.21.1 - 2026-11-11
 
 - Fix category translation saves when the form omits the optional status field.

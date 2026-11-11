@@ -4,6 +4,9 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $manifest = json_decode((string)file_get_contents($root . '/plugin.json'), true, 64, JSON_THROW_ON_ERROR);
 $admin = (string)file_get_contents($root . '/includes/admin.php');
+$helpers = (string)file_get_contents($root . '/includes/helpers.php');
+$frontend = (string)file_get_contents($root . '/includes/frontend.php');
+$sectionPackages = (string)file_get_contents($root . '/includes/theme-section-packages.php');
 $themeFiles = (string)file_get_contents($root . '/admin/index.php');
 $themeStrings = (string)file_get_contents($root . '/admin/theme-strings.php');
 $css = (string)file_get_contents($root . '/assets/css/translate.css');
@@ -78,8 +81,16 @@ $check(str_contains($css, '.ct-customize-guide')
     && str_contains($css, ':not(.ct-theme-strings-table)')
     && str_contains($themeStrings, 'ct-table-scroll'),
     'Customize workflow and responsive PHP string locale controls have complete styling');
-$check(str_contains((string)file_get_contents($root . '/plugin.json'), 'content-translation.css?v=1.21.1-resource-adapters'),
+$check(str_contains((string)file_get_contents($root . '/plugin.json'), 'content-translation.css?v=1.21.2-theme-homepage'),
     'compact list-language stylesheet uses a cache-distinct asset URL');
+$check(str_contains($helpers, 'function ct_homepage_theme_source_post(')
+    && str_contains($helpers, "function_exists('theme_homepage_manifest')")
+    && str_contains($helpers, "\$names !== (array)\$manifest['sections']")
+    && str_contains($frontend, "add_filter('theme_slot_context'")
+    && str_contains($frontend, 'ct_homepage_theme_runtime_post($pdo, $folder)')
+    && str_contains($sectionPackages, "\$context['__jy_slot_key']")
+    && str_contains($sectionPackages, "\$manifest['live_sections']"),
+    'file-owned homepages use a validated translated source package while retaining manifest-declared live sections');
 $themeBuilderReferences = [];
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 foreach ($iterator as $file) {

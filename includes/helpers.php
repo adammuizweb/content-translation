@@ -1146,6 +1146,48 @@ if (!function_exists('ct_ensure_schema')) {
         }
     }
 
+    /** Resolve the translation source declared by a theme-owned homepage. */
+    function ct_homepage_theme_source_post(PDO $pdo, ?string $themeFolder = null): ?array {
+        if (!function_exists('theme_homepage_manifest')) return null;
+        $folder = trim((string)($themeFolder ?? (function_exists('get_active_theme_folder') ? get_active_theme_folder($pdo) : '')));
+        if ($folder === '') return null;
+        $manifest = theme_homepage_manifest($folder);
+        if (!is_array($manifest)) return null;
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM posts WHERE slug = ? AND type = 'theme' AND status = 'published' AND is_deleted = 0 ORDER BY id LIMIT 1");
+            $stmt->execute([(string)$manifest['source_slug']]);
+            $post = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($post)) return null;
+            if (function_exists('ct_parse_theme_section_composition')) {
+                $composition = ct_parse_theme_section_composition((string)($post['content'] ?? ''));
+                $names = is_array($composition)
+                    ? array_map(static fn(array $item): string => (string)($item['name'] ?? ''), $composition)
+                    : [];
+                if ($names !== (array)$manifest['sections']) return null;
+            }
+            return $post;
+        } catch (Throwable $error) {
+            error_log('[content-translation] homepage source lookup error: ' . $error->getMessage());
+            return null;
+        }
+    }
+
+    /** Return the source post with its published locale package when available. */
+    function ct_homepage_theme_runtime_post(PDO $pdo, string $themeFolder): ?array {
+        $source = ct_homepage_theme_source_post($pdo, $themeFolder);
+        if (!is_array($source)) return null;
+        $locale = $GLOBALS['ct_request_locale'] ?? null;
+        $defaultLocale = function_exists('content_default_locale') ? content_default_locale() : 'en';
+        if (!is_string($locale) || $locale === '' || $locale === $defaultLocale) return $source;
+
+        $translation = ct_get_public_post_translation($pdo, (int)($source['id'] ?? 0), $locale);
+        if (!is_array($translation)) return null;
+        $runtime = array_merge($source, $translation, ['ct_locale' => $locale]);
+        return function_exists('ct_apply_theme_section_package')
+            ? ct_apply_theme_section_package($runtime)
+            : $runtime;
+    }
+
     function ct_theme_file_resource_id(string $themeFolder, string $slotKey): string {
         return $themeFolder . ':' . $slotKey;
     }

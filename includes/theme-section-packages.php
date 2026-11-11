@@ -813,7 +813,9 @@ if (!function_exists('ct_theme_section_package_format')) {
     function ct_is_homepage_post(PDO $pdo, int $postId): bool {
         if ($postId <= 0) return false;
         $homepage = ct_homepage_theme_post($pdo);
-        return is_array($homepage) && (int)($homepage['id'] ?? 0) === $postId;
+        if (is_array($homepage) && (int)($homepage['id'] ?? 0) === $postId) return true;
+        $source = function_exists('ct_homepage_theme_source_post') ? ct_homepage_theme_source_post($pdo) : null;
+        return is_array($source) && (int)($source['id'] ?? 0) === $postId;
     }
 
     function ct_homepage_sitemap_paths(PDO $pdo): array {
@@ -892,6 +894,10 @@ add_filter('theme_section_html', function ($html, $name, $attrs, $context, $pdo,
     if (!$sectionRoot || !$layoutPath || !theme_section_path_is_within($layoutPath, $sectionRoot)) return $html;
     $renderer = ct_theme_section_renderer_status($pdo, (string)$name);
     if (!$renderer['available'] || $renderer['dynamic'] || ($renderer['path'] ?? null) !== $layoutPath) return $html;
+    if (($context['__jy_slot_key'] ?? '') === 'main.homepage' && function_exists('theme_homepage_manifest')) {
+        $manifest = theme_homepage_manifest((string)$owner);
+        if (is_array($manifest) && in_array((string)$name, (array)($manifest['live_sections'] ?? []), true)) return $html;
+    }
     $translated = $package['sections'][(string)$name]['html'] ?? null;
     return is_string($translated) && trim($translated) !== '' ? $translated : $html;
 }, 20, 6);

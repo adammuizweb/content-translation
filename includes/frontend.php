@@ -98,6 +98,16 @@ add_filter('router_path', function ($path) {
             return '';
         }
 
+        $sourcePost = ct_homepage_theme_source_post($pdo);
+        if ($sourcePost) {
+            if (!ct_get_public_post_translation($pdo, (int)$sourcePost['id'], $first)) ct_render_not_found();
+            if (function_exists('set_locale')) set_locale($first);
+            $GLOBALS['ct_request_locale'] = $first;
+            $GLOBALS['ct_current_post'] = $sourcePost;
+            $GLOBALS['ct_localized_homepage'] = true;
+            return '';
+        }
+
         $resource = ct_homepage_theme_file_resource($pdo);
         $translation = $resource
             ? ct_get_published_theme_file_translation($pdo, (string)$resource['theme_folder'], (string)$resource['slot_key'], $first)
@@ -440,6 +450,19 @@ add_filter('theme_mod_value', function ($value, $fieldKey, $themeFolder, $slotKe
     return $translation['values'][(string)$fieldKey];
 }, 10, 5);
 
+// Theme-owned homepage files keep reviewed locale packages as their content
+// source while the file itself owns the section order.
+add_filter('theme_slot_context', function ($context, $slotKey, $folder, $pdo) {
+    if (!is_array($context) || $slotKey !== 'main.homepage' || !$pdo instanceof PDO
+        || !is_string($folder) || $folder === '' || isset($context['post'])) return $context;
+    $resolved = function_exists('resolve_template') ? resolve_template($pdo, $slotKey) : null;
+    if (!is_array($resolved) || ($resolved['type'] ?? '') !== 'theme_file'
+        || (string)($resolved['theme_folder'] ?? '') !== $folder) return $context;
+    $post = ct_homepage_theme_runtime_post($pdo, $folder);
+    if (is_array($post)) $context['post'] = $post;
+    return $context;
+}, 15, 4);
+
 // Theme Zone rows retain their Core identity; only explicitly declared text keys are overlaid.
 add_filter('theme_zone_items', function ($items, $themeFolder, $zoneSlug, $position, $activeOnly, $pdo) {
     $locale = $GLOBALS['ct_request_locale'] ?? null;
@@ -508,6 +531,8 @@ add_filter('localized_home_url', function ($url, $locale, $baseUrl, $pdo) {
         || !in_array($locale, ct_enabled_locales($pdo), true)) return $url;
     $homepage = ct_homepage_theme_post($pdo);
     if ($homepage && ct_get_published_translation($pdo, (int)$homepage['id'], $locale)) return $url;
+    $sourcePost = ct_homepage_theme_source_post($pdo);
+    if ($sourcePost && ct_get_public_post_translation($pdo, (int)$sourcePost['id'], $locale)) return $url;
     $resource = ct_homepage_theme_file_resource($pdo);
     if ($resource && ct_get_published_theme_file_translation($pdo, (string)$resource['theme_folder'], (string)$resource['slot_key'], $locale)) return $url;
     return rtrim((string)$baseUrl, '/') . '/';
@@ -1156,6 +1181,12 @@ add_action('init', function () {
     $homepage = ct_homepage_theme_post($pdo);
     if ($homepage) {
         $GLOBALS['ct_current_post'] = $homepage;
+        $GLOBALS['ct_localized_homepage'] = true;
+        return;
+    }
+    $sourcePost = ct_homepage_theme_source_post($pdo);
+    if ($sourcePost) {
+        $GLOBALS['ct_current_post'] = $sourcePost;
         $GLOBALS['ct_localized_homepage'] = true;
         return;
     }
