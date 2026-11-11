@@ -1962,6 +1962,27 @@ if (!function_exists('ct_ensure_schema')) {
         return is_string($status) && in_array($status, ['draft', 'published'], true) ? $status : 'published';
     }
 
+    function ct_category_translation_slug(string $name, string $slug): string {
+        $value = trim($slug) !== '' ? trim($slug) : trim($name);
+        $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        $value = preg_replace('/[^\p{L}\p{N}\-]+/u', '-', $value);
+        $value = is_string($value) ? preg_replace('/-{2,}/', '-', $value) : '';
+        return is_string($value) ? trim($value, '-') : '';
+    }
+
+    function ct_category_translation_return_to(mixed $candidate, string $fallback, string $base): string {
+        if (!is_string($candidate) || $candidate === '' || strlen($candidate) > 2048
+            || str_starts_with($candidate, '//') || preg_match('/[\x00-\x1F\x7F\\\\]/', rawurldecode($candidate))) {
+            return $fallback;
+        }
+        $parts = parse_url($candidate);
+        if (!is_array($parts) || isset($parts['scheme']) || isset($parts['host']) || isset($parts['user'])
+            || isset($parts['pass']) || isset($parts['fragment'])
+            || rtrim((string)($parts['path'] ?? ''), '/') !== rtrim($base, '/')) return $fallback;
+        parse_str((string)($parts['query'] ?? ''), $query);
+        return ($query['page'] ?? null) === 'admin/categories/index' ? $candidate : $fallback;
+    }
+
     function ct_save_category_translation(PDO $pdo, int $categoryId, string $locale, array $data): bool {
         $status = ct_category_translation_status($data);
         $stmt = $pdo->prepare("INSERT INTO category_translations (category_id, locale, name, slug, description, status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), slug = VALUES(slug), description = VALUES(description), status = VALUES(status)");
@@ -1969,6 +1990,7 @@ if (!function_exists('ct_ensure_schema')) {
     }
 
     function ct_category_translation_slug_conflict(PDO $pdo, int $categoryId, string $locale, string $slug, ?int $parentId): bool {
+        $parentId = ($parentId ?? 0) > 0 ? $parentId : null;
         $stmt = $pdo->prepare("SELECT 1
             FROM category_translations ct
             INNER JOIN categories c ON c.id = ct.category_id
@@ -1977,7 +1999,7 @@ if (!function_exists('ct_ensure_schema')) {
               AND ct.slug = ?
               AND ct.status = 'published'
               AND c.is_deleted = 0
-              AND ((c.parent_id IS NULL AND ? IS NULL) OR c.parent_id = ?)
+              AND ((COALESCE(c.parent_id, 0) = 0 AND ? IS NULL) OR c.parent_id = ?)
             LIMIT 1 FOR UPDATE");
         $stmt->execute([$categoryId, $locale, $slug, $parentId, $parentId]);
         return (bool)$stmt->fetchColumn();
@@ -1988,7 +2010,8 @@ if (!function_exists('ct_ensure_schema')) {
         $categoryStmt->execute([$categoryId]);
         $parent = $categoryStmt->fetch(PDO::FETCH_ASSOC);
         if (!$parent) return;
-        $parentId = $parent['parent_id'] === null ? null : (int)$parent['parent_id'];
+        $storedParentId = (int)($parent['parent_id'] ?? 0);
+        $parentId = $storedParentId > 0 ? $storedParentId : null;
 
         $translations = $pdo->prepare("SELECT locale, slug FROM category_translations WHERE category_id = ? AND status = 'published' AND TRIM(slug) <> '' ORDER BY locale FOR UPDATE");
         $translations->execute([$categoryId]);

@@ -89,6 +89,11 @@ $required = [
     'This media URL was changed by another editor. Reload before saving.',
     'Media URL slug is too long.',
     'This media URL slug is already in use for that language.',
+    'Leave blank to generate it from the translated name.',
+    'This slug only needs to be unique among sibling categories in this language. It may match another language.',
+    'A URL slug could not be generated. Enter one manually.',
+    'Slug already taken by a sibling category in this language.',
+    'Category translation could not be saved.',
 ];
 $files = [
     $root . '/includes/shortcode-presets.php',

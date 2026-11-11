@@ -42,6 +42,79 @@ function ct_admin_translation_status_label(string $status): string {
     };
 }
 
+function ct_handle_category_translation_save(PDO $pdo): void {
+    $page = is_string($_GET['page'] ?? null) ? trim($_GET['page'], '/') : '';
+    if ($page !== 'admin/tools/content-translation/category-edit'
+        || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        || !isset($_POST['ct_save_category_translation'])) return;
+
+    $base = defined('ADMIN_BASE_PATH') ? ADMIN_BASE_PATH : '/adiwira';
+    $defaultReturnTo = $base . '/?page=admin/categories/index';
+    $returnTo = ct_category_translation_return_to($_POST['return_to'] ?? null, $defaultReturnTo, $base);
+    if (!function_exists('csrf_check') || !csrf_check(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : '')) {
+        http_response_code(419);
+        $GLOBALS['ct_category_translation_error'] = __('Invalid CSRF token.');
+        return;
+    }
+
+    $categoryId = filter_var($_GET['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $locale = is_string($_GET['locale'] ?? null) ? trim($_GET['locale']) : '';
+    if ($categoryId === false || !in_array($locale, ct_enabled_locales($pdo), true)) {
+        $GLOBALS['ct_category_translation_error'] = __('Invalid category or locale.');
+        return;
+    }
+    $name = is_string($_POST['name'] ?? null) ? trim($_POST['name']) : '';
+    $submittedSlug = is_string($_POST['slug'] ?? null) ? $_POST['slug'] : '';
+    $description = is_string($_POST['description'] ?? null) ? $_POST['description'] : '';
+    if ($name === '') {
+        $GLOBALS['ct_category_translation_error'] = __('Name is required.');
+        return;
+    }
+    $slug = ct_category_translation_slug($name, $submittedSlug);
+    if ($slug === '') {
+        $GLOBALS['ct_category_translation_error'] = __('A URL slug could not be generated. Enter one manually.');
+        return;
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $actorId = ct_current_user_id();
+        if (!authorization_lock_actor_permissions($pdo, $actorId)) throw new DomainException('Category actor permission lock failed.');
+        $lockedRows = $pdo->query('SELECT id, parent_id, created_by, is_deleted FROM categories ORDER BY id FOR UPDATE')->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $lockedCategory = null;
+        foreach ($lockedRows as $lockedRow) {
+            if ((int)$lockedRow['id'] === $categoryId && (int)$lockedRow['is_deleted'] === 0) $lockedCategory = $lockedRow;
+        }
+        $ownerId = (int)($lockedCategory['created_by'] ?? 0);
+        if (!$lockedCategory || !authorization_lock_owner_contexts($pdo, [$ownerId])
+            || !ct_user_can_workspace($pdo, $actorId)
+            || !user_can($pdo, $actorId, 'core.categories.update', ['owner_id' => $ownerId])) {
+            throw new DomainException('Category translation permission changed.');
+        }
+        $parentId = isset($lockedCategory['parent_id']) ? (int)$lockedCategory['parent_id'] : null;
+        if (ct_category_translation_slug_conflict($pdo, $categoryId, $locale, $slug, $parentId)) {
+            throw new InvalidArgumentException(__('Slug already taken by a sibling category in this language.'));
+        }
+        if (!ct_save_category_translation($pdo, $categoryId, $locale, [
+            'name' => $name,
+            'slug' => $slug,
+            'description' => $description,
+        ])) {
+            throw new RuntimeException('Category translation could not be saved.');
+        }
+        $pdo->commit();
+        $_SESSION['flash_success'] = __('Translation saved.');
+        header('Location: ' . $returnTo, true, 303);
+        exit;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $GLOBALS['ct_category_translation_error'] = $error instanceof InvalidArgumentException
+            ? $error->getMessage()
+            : __('Category translation could not be saved.');
+        error_log('content-translation/category-edit.php error: ' . $error->getMessage());
+    }
+}
+
 function ct_theme_source_locale_chips_html(string $sourceLocale, array $locales, array $statuses, callable $urlForLocale): string {
     $html = '<div class="ct-locale-chips"><span class="ct-locale-chip ct-locale-chip--source"><b>'
         . htmlspecialchars(strtoupper($sourceLocale), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</b><small>'
@@ -429,6 +502,8 @@ add_action('admin_init', function () {
     ct_ensure_schema($pdo);
     if (!ct_user_can_workspace($pdo)) return;
     ct_seed_shortcode_preset_ui_translations($pdo);
+
+    ct_handle_category_translation_save($pdo);
 
     $page = trim((string)($_GET['page'] ?? ''), '/');
     $types = [

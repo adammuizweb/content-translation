@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.21.3 - 2026-11-11
+
+- Process Category translation saves before dashboard layout output and redirect back to the validated Category list URL.
+- Allow an empty localized Category slug by deriving it from the translated name, while keeping sibling conflicts scoped to one locale.
+
 ## 1.21.2 - 2026-11-11
 
 - Support translated Theme Section packages as the content source for file-owned homepages.

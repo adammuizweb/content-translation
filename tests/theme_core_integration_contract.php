@@ -81,7 +81,7 @@ $check(str_contains($css, '.ct-customize-guide')
     && str_contains($css, ':not(.ct-theme-strings-table)')
     && str_contains($themeStrings, 'ct-table-scroll'),
     'Customize workflow and responsive PHP string locale controls have complete styling');
-$check(str_contains((string)file_get_contents($root . '/plugin.json'), 'content-translation.css?v=1.21.2-theme-homepage'),
+$check(str_contains((string)file_get_contents($root . '/plugin.json'), 'content-translation.css?v=1.21.3-category-editor'),
     'compact list-language stylesheet uses a cache-distinct asset URL');
 $check(str_contains($helpers, 'function ct_homepage_theme_source_post(')
     && str_contains($helpers, "function_exists('theme_homepage_manifest')")

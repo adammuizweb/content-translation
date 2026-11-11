@@ -15,6 +15,7 @@ $frontend = (string)file_get_contents($root . '/includes/frontend.php');
 $edit = (string)file_get_contents($root . '/admin/edit.php');
 $index = (string)file_get_contents($root . '/admin/index.php');
 $save = (string)file_get_contents($root . '/admin/api/save.php');
+$categoryEditor = (string)file_get_contents($root . '/admin/category-edit.php');
 $settings = (string)file_get_contents($root . '/admin/settings.php');
 $plugin = (string)file_get_contents($root . '/plugin.php');
 $styles = (string)file_get_contents($root . '/assets/css/translate.css');
@@ -77,7 +78,7 @@ $pdo->exec("INSERT INTO category_translations VALUES
     (4, 'de', 'Kind', 'kind', '', 'published')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.21.2', 'plugin release is 1.21.2');
+$check(($manifest['version'] ?? '') === '1.21.3', 'plugin release is 1.21.3');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -146,7 +147,7 @@ $check(str_contains($admin, "add_filter('admin_category_list_rows'")
     'Content Translation adapts selected-locale category labels, actions, URLs, and cleanup through Core hooks');
 $check(str_contains($helpers, 'ct_category_translation_slug_conflict')
     && str_contains($helpers, 'ct_assert_category_translation_paths_unique')
-    && str_contains((string)file_get_contents($root . '/admin/category-edit.php'), 'authorization_lock_actor_permissions')
+    && str_contains($admin, 'authorization_lock_actor_permissions')
     && str_contains($admin, "add_action('admin_category_before_edit_commit'")
     && str_contains($admin, "add_action('admin_category_before_restore_commit'"),
     'category translation saves and hierarchy changes reject ambiguous sibling slugs under ordered locks');
@@ -156,6 +157,27 @@ $check(ct_category_translation_status([]) === 'published'
     && ct_category_translation_status(['status' => null]) === 'published'
     && ct_category_translation_status(['status' => ['published']]) === 'published',
     'category translation forms default a missing or malformed status to published');
+$check(ct_category_translation_slug('Informasi', '') === 'informasi'
+    && ct_category_translation_slug('Ignored', 'Same Slug') === 'same-slug',
+    'category translation slugs normalize an explicit value or derive from the translated name');
+$categoryReturn = '/dashboard/?page=admin/categories/index&content_locale=id&p=2';
+$check(ct_category_translation_return_to($categoryReturn, '/dashboard/?page=admin/categories/index', '/dashboard') === $categoryReturn
+    && ct_category_translation_return_to('https://example.test/dashboard/?page=admin/categories/index', '/dashboard/?page=admin/categories/index', '/dashboard') === '/dashboard/?page=admin/categories/index'
+    && ct_category_translation_return_to('javascript:/dashboard/?page=admin/categories/index', '/dashboard/?page=admin/categories/index', '/dashboard') === '/dashboard/?page=admin/categories/index'
+    && ct_category_translation_return_to('/dashboard/?page=admin/posts/index', '/dashboard/?page=admin/categories/index', '/dashboard') === '/dashboard/?page=admin/categories/index',
+    'category translation return URLs remain confined to the Core Category list');
+$check(str_contains($admin, 'function ct_handle_category_translation_save')
+    && str_contains($admin, "header('Location: ' . \$returnTo, true, 303)")
+    && str_contains($admin, 'ct_handle_category_translation_save($pdo);')
+    && !str_contains($categoryEditor, "header('Location:")
+    && !str_contains($categoryEditor, "\$_SERVER['REQUEST_METHOD']"),
+    'category translation saves run before dashboard output and redirect back through the validated return URL');
+$check(str_contains($categoryEditor, "__('Leave blank to generate it from the translated name.')")
+    && !str_contains($categoryEditor, 'name="slug" required')
+    && str_contains($helpers, 'ct.locale = ?')
+    && str_contains($helpers, 'COALESCE(c.parent_id, 0) = 0')
+    && str_contains($helpers, '$stmt->execute([$categoryId, $locale, $slug, $parentId, $parentId])'),
+    'category slugs are optional in the editor and conflict only with siblings in the same locale and normalized parent');
 $check(str_contains($admin, "'admin/pages/add', 'admin/pages/edit'")
     && str_contains($admin, "FROM category_translations")
     && str_contains($admin, "status = 'published'")
