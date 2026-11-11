@@ -1915,8 +1915,13 @@ if (!function_exists('ct_ensure_schema')) {
         return $translation && ($translation['status'] ?? 'published') === 'published' ? $translation : null;
     }
 
+    function ct_category_translation_status(array $data): string {
+        $status = $data['status'] ?? 'published';
+        return is_string($status) && in_array($status, ['draft', 'published'], true) ? $status : 'published';
+    }
+
     function ct_save_category_translation(PDO $pdo, int $categoryId, string $locale, array $data): bool {
-        $status = in_array(($data['status'] ?? 'published'), ['draft', 'published'], true) ? $data['status'] : 'published';
+        $status = ct_category_translation_status($data);
         $stmt = $pdo->prepare("INSERT INTO category_translations (category_id, locale, name, slug, description, status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), slug = VALUES(slug), description = VALUES(description), status = VALUES(status)");
         return $stmt->execute([$categoryId, $locale, (string)($data['name'] ?? ''), (string)($data['slug'] ?? ''), (string)($data['description'] ?? ''), $status]);
     }

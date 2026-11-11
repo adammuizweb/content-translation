@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.21.1 - 2026-11-11
+
+- Fix category translation saves when the form omits the optional status field.
+
 ## 1.21.0 - 2026-10-23
 
 - Add a bounded runtime adapter contract for multilingual resources owned by other plugins, including localized routing, canonical and `hreflang` metadata, and language-switcher integration.

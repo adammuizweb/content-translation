@@ -77,7 +77,7 @@ $pdo->exec("INSERT INTO category_translations VALUES
     (4, 'de', 'Kind', 'kind', '', 'published')");
 $post = $pdo->query('SELECT * FROM posts WHERE id = 22')->fetch(PDO::FETCH_ASSOC);
 
-$check(($manifest['version'] ?? '') === '1.21.0', 'plugin release is 1.21.0');
+$check(($manifest['version'] ?? '') === '1.21.1', 'plugin release is 1.21.1');
 $check(str_contains($helpers, 'content_translation_author_locales')
     && str_contains($helpers, 'ct_author_default_locale')
     && str_contains($helpers, 'ct_set_author_locale_preferences'), 'author locale preferences use shared validated helpers');
@@ -150,6 +150,12 @@ $check(str_contains($helpers, 'ct_category_translation_slug_conflict')
     && str_contains($admin, "add_action('admin_category_before_edit_commit'")
     && str_contains($admin, "add_action('admin_category_before_restore_commit'"),
     'category translation saves and hierarchy changes reject ambiguous sibling slugs under ordered locks');
+$check(ct_category_translation_status([]) === 'published'
+    && ct_category_translation_status(['status' => 'published']) === 'published'
+    && ct_category_translation_status(['status' => 'draft']) === 'draft'
+    && ct_category_translation_status(['status' => null]) === 'published'
+    && ct_category_translation_status(['status' => ['published']]) === 'published',
+    'category translation forms default a missing or malformed status to published');
 $check(str_contains($admin, "'admin/pages/add', 'admin/pages/edit'")
     && str_contains($admin, "FROM category_translations")
     && str_contains($admin, "status = 'published'")
